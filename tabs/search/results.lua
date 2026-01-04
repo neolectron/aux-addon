@@ -11,7 +11,10 @@ local gui = require 'aux.gui'
 search_scan_id = 0
 
 function aux.handle.LOAD()
-	new_search()
+	-- Try to restore saved search state, otherwise create empty search
+	if not restore_search_state() then
+		new_search()
+	end
 end
 
 function update_real_time(enable)
@@ -32,6 +35,98 @@ do
 
 	function current_search()
 		return searches[search_index]
+	end
+
+	-- Save search state to SavedVariables (filter, continuation, pages - NOT results)
+	function save_search_state()
+		local saved = {}
+		for i, search in ipairs(searches) do
+			tinsert(saved, {
+				filter_string = search.filter_string,
+				first_page = search.first_page,
+				last_page = search.last_page,
+				real_time = search.real_time,
+				continuation = search.continuation,
+			})
+		end
+		aux.realm_data.saved_search_state = {
+			searches = saved,
+			search_index = search_index,
+		}
+	end
+
+	-- Restore search state from SavedVariables
+	function restore_search_state()
+		local saved = aux.realm_data.saved_search_state
+		if not saved or not saved.searches or getn(saved.searches) == 0 then
+			return false
+		end
+		
+		-- Restore each saved search
+		for i, saved_search in ipairs(saved.searches) do
+			local search = T.map(
+				'records', T.acquire(),
+				'filter_string', saved_search.filter_string,
+				'first_page', saved_search.first_page,
+				'last_page', saved_search.last_page,
+				'real_time', saved_search.real_time,
+				'continuation', saved_search.continuation
+			)
+			tinsert(searches, search)
+			
+			search.status_bar = status_bars[i]
+			search.status_bar:update_status(1, 1)
+			if saved_search.continuation then
+				search.status_bar:set_text('Scan paused - click Resume')
+			else
+				search.status_bar:set_text('')
+			end
+			search.status_bar:Hide()
+			
+			search.table = tables[i]
+			search.table:SetSort(1, 2, 3, 4, 5, 6, 7, 8, 9)
+			search.table:Reset()
+			search.table:SetDatabase(search.records)
+			search.table:Hide()
+		end
+		
+		-- Restore index (clamped to valid range)
+		search_index = saved.search_index or 1
+		if search_index > getn(searches) then
+			search_index = getn(searches)
+		end
+		if search_index < 1 then
+			search_index = 1
+		end
+		
+		-- Show the current search
+		searches[search_index].status_bar:Show()
+		searches[search_index].table:Show()
+		
+		-- Update UI controls
+		search_box:SetText(searches[search_index].filter_string or '')
+		first_page_input:SetText(searches[search_index].first_page and searches[search_index].first_page + 1 or '')
+		last_page_input:SetText(searches[search_index].last_page and searches[search_index].last_page + 1 or '')
+		
+		if search_index == 1 then
+			previous_button:Disable()
+		else
+			previous_button:Enable()
+		end
+		if search_index == getn(searches) then
+			next_button:Hide()
+			range_button:SetPoint('LEFT', previous_button, 'RIGHT', 4, 0)
+			real_time_button:SetPoint('LEFT', previous_button, 'RIGHT', 4, 0)
+		else
+			next_button:Show()
+			range_button:SetPoint('LEFT', next_button, 'RIGHT', 4, 0)
+			real_time_button:SetPoint('LEFT', next_button, 'RIGHT', 4, 0)
+		end
+		update_real_time(searches[search_index].real_time)
+		update_start_stop()
+		update_continuation()
+		
+		return true
 	end
 
 	function update_search(index)
@@ -64,6 +159,9 @@ do
 		update_real_time(searches[search_index].real_time)
 		update_start_stop()
 		update_continuation()
+		
+		-- Save state whenever we switch searches
+		save_search_state()
 	end
 
 	function new_search(filter_string, first_page, last_page, real_time)
@@ -89,6 +187,9 @@ do
 		search.table:SetDatabase(search.records)
 
 		update_search(getn(searches))
+		
+		-- Save state after creating new search
+		save_search_state()
 	end
 
 	function clear_control_focus()
@@ -124,6 +225,7 @@ function discard_continuation()
 	scan.abort(search_scan_id)
 	current_search().continuation = nil
 	update_continuation()
+	save_search_state()
 end
 
 function update_start_stop()
@@ -202,11 +304,12 @@ function start_real_time_scan(query, search, continuation)
 
 			search.active = false
 			update_start_stop()
+			save_search_state()
 		end,
 	}
 end
 
-function start_search(queries, continuation)
+function start_search(queries, continuation, reverse)
 	local current_query, current_page, total_queries, start_query, start_page
 
 	local search = current_search()
@@ -228,18 +331,21 @@ function start_search(queries, continuation)
 	search_scan_id = scan.start{
 		type = 'list',
 		queries = queries,
+		reverse = reverse,
 		auto_buy_validator = search.auto_buy_validator,
 		auto_bid_validator = search.auto_bid_validator,
 		on_scan_start = function()
 			search.status_bar:update_status(0, 0)
 			if continuation then
 				search.status_bar:set_text('Resuming scan...')
+			elseif reverse then
+				search.status_bar:set_text('Scanning auctions (reverse)...')
 			else
 				search.status_bar:set_text('Scanning auctions...')
 			end
 		end,
-		on_page_loaded = function(_, total_scan_pages)
-			current_page = current_page + 1
+		on_page_loaded = function(page_progress, total_scan_pages)
+			current_page = page_progress
 			total_scan_pages = total_scan_pages + (start_page - 1)
 			total_scan_pages = max(total_scan_pages, 1)
 			current_page = min(current_page, total_scan_pages)
@@ -271,6 +377,10 @@ function start_search(queries, continuation)
 
 			search.active = false
 			update_start_stop()
+			
+			-- Clear continuation and save state when complete
+			search.continuation = nil
+			save_search_state()
 		end,
 		on_abort = function()
 			search.status_bar:update_status(1, 1)
@@ -287,6 +397,7 @@ function start_search(queries, continuation)
 
 			search.active = false
 			update_start_stop()
+			save_search_state()
 		end,
 	}
 end
@@ -343,6 +454,7 @@ function M.execute(resume, real_time)
 	end
 
 	local continuation = resume and current_search().continuation
+	local reverse = reverse_checkbox and reverse_checkbox:GetChecked()
 	discard_continuation()
 	current_search().active = true
 	update_start_stop()
@@ -355,7 +467,7 @@ function M.execute(resume, real_time)
 			query.blizzard_query.first_page = current_search().first_page
 			query.blizzard_query.last_page = current_search().last_page
 		end
-		start_search(queries, continuation)
+		start_search(queries, continuation, reverse)
 	end
 end
 

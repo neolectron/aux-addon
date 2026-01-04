@@ -4,6 +4,8 @@ local T = require 'T'
 local post = require 'aux.tabs.post'
 local gui = require 'aux.gui'
 local purchase_summary = require 'aux.util.purchase_summary'
+local money = require 'aux.util.money'
+local info = require 'aux.util.info'
 
 M.print = T.vararg-function(arg)
 	DEFAULT_CHAT_FRAME:AddMessage(LIGHTYELLOW_FONT_COLOR_CODE .. '<aux> ' .. join(map(arg, tostring), ' '))
@@ -90,7 +92,16 @@ function handle.LOAD()
                 daily = false,
                 disenchant_value = false,
                 disenchant_distribution = false,
-            }
+                wowauctions = true,
+            },
+            profit_history = {
+                total_spent = 0,
+                total_vendor_value = 0,
+                total_items = 0,
+                first_purchase_time = nil,
+                last_purchase_time = nil,
+                item_stats = {},  -- Per-item profit tracking: {[item_id] = {name, count, total_profit, total_spent}}
+            },
         })
     end
     do
@@ -100,6 +111,7 @@ function handle.LOAD()
             characters = {},
             recent_searches = {},
             favorite_searches = {},
+            saved_search_state = {},
         })
     end
 end
@@ -158,19 +170,34 @@ end
 do
 	local locked
 	function M.bid_in_progress() return locked end
-	function M.place_bid(type, index, amount, on_success)
+	function M.place_bid(type, index, amount, on_success, is_auto_buy)
 		if locked then return end
-		local money = GetMoney()
+		local money_before = GetMoney()
 		PlaceAuctionBid(type, index, amount)
-		if money >= amount then
+		if money_before >= amount then
 			locked = true
 			local send_signal, signal_received = signal()
 			local name, texture, count, _, _, _, _, _, buyout_price = GetAuctionItemInfo(type, index)
+			-- Get item_id from link for vendor price lookup
+			local item_id
+			local link = GetAuctionItemLink(type, index)
+			if link then
+				item_id = info.parse_link(link)
+			end
 			thread(when, signal_received, function()
-				-- Track all (buyout) purchases after successful bid
+				-- Track only auto-buy (buyout) purchases for profit tracking
 				if name and amount > 0 and amount >= buyout_price then
-					purchase_summary.add_purchase(name, texture, count, amount)
-					purchase_summary.update_display()
+					if is_auto_buy then
+						purchase_summary.add_purchase(name, texture, count, amount, item_id)
+						purchase_summary.update_display()
+					end
+					-- Print buyout message with price
+					local count_str = count > 1 and (count .. "x ") or ""
+					print(color.green("Bought: ") .. count_str .. name .. " for " .. money.to_string(amount, true))
+				elseif name and amount > 0 then
+					-- Print bid message with price
+					local count_str = count > 1 and (count .. "x ") or ""
+					print(color.blue("Bid placed: ") .. count_str .. name .. " for " .. money.to_string(amount, true))
 				end
 				do (on_success or pass)() end
 				locked = false

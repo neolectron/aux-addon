@@ -110,6 +110,15 @@ function M.extend_tooltip(tooltip, link, quantity)
             local market_value = history.market_value(item_key)
             tooltip:AddLine('Today: ' .. (market_value and money.to_string2(market_value * quantity) .. ' (' .. gui.percentage_historical(aux.round(market_value / value * 100)) .. ')' or UNKNOWN), aux.color.tooltip.value())
         end
+        -- Add WoWAuctions link hint
+        if settings.wowauctions and item_id then
+            local item_name = GetItemInfo(item_id)
+            if item_name then
+                local url_name = gsub(strlower(item_name), ' ', '-')
+                url_name = gsub(url_name, "'", '')
+                tooltip:AddLine('WoWAuctions: /aux wa ' .. item_name, 0.5, 0.5, 0.5)
+            end
+        end
     end
 
     if tooltip == GameTooltip and game_tooltip_money > 0 then

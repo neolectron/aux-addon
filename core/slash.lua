@@ -60,6 +60,9 @@ function SlashCmdList.AUX(command)
     elseif arguments[1] == 'tooltip' and arguments[2] == 'disenchant' and arguments[3] == 'distribution' then
 	    tooltip_settings.disenchant_distribution = not tooltip_settings.disenchant_distribution
         aux.print('tooltip disenchant distribution ' .. status(tooltip_settings.disenchant_distribution))
+    elseif arguments[1] == 'tooltip' and arguments[2] == 'wowauctions' then
+	    tooltip_settings.wowauctions = not tooltip_settings.wowauctions
+        aux.print('tooltip wowauctions ' .. status(tooltip_settings.wowauctions))
     elseif arguments[1] == 'clear' and arguments[2] == 'item' and arguments[3] == 'cache' then
 	    aux.account_data.items = {}
         aux.account_data.item_ids = {}
@@ -84,6 +87,41 @@ function SlashCmdList.AUX(command)
 		if not aux.account_data.purchase_summary then
 			purchase_summary.hide()
 		end
+	elseif arguments[1] == 'reset' and arguments[2] == 'profit' then
+		purchase_summary.reset_alltime_profit()
+		aux.print('All-time profit tracking has been reset.')
+	elseif arguments[1] == 'top' then
+		local limit = tonumber(arguments[2]) or 10
+		purchase_summary.print_top_items(limit)
+	elseif arguments[1] == 'wowauction' or arguments[1] == 'wa' then
+		-- Build item name from remaining arguments
+		local item_name = ''
+		for i = 2, getn(arguments) do
+			if i > 2 then item_name = item_name .. ' ' end
+			item_name = item_name .. arguments[i]
+		end
+		if item_name == '' then
+			aux.print('Usage: /aux wowauction <item name>')
+			aux.print('Example: /aux wowauction Silk Cloth')
+		else
+			-- Try to find item ID from name
+			local item_id = nil
+			for id = 1, 30000 do
+				local name = GetItemInfo(id)
+				if name and strlower(name) == strlower(item_name) then
+					item_id = id
+					break
+				end
+			end
+			-- Generate URL
+			local url_name = gsub(strlower(item_name), ' ', '-')
+			url_name = gsub(url_name, "'", '')
+			local url = 'https://www.wowauctions.net/auctionHouse/turtle-wow/ambershire/mergedAh/' .. url_name
+			if item_id then
+				url = url .. '-' .. item_id
+			end
+			aux.print(aux.color.gold('WoWAuctions: ') .. url)
+		end
 	else
 		aux.print('Usage:')
 		aux.print('- scale [' .. aux.color.blue(aux.account_data.scale) .. ']')
@@ -99,6 +137,7 @@ function SlashCmdList.AUX(command)
 		aux.print('- tooltip merchant sell [' .. status(tooltip_settings.merchant_sell) .. ']')
 		aux.print('- tooltip disenchant value [' .. status(tooltip_settings.disenchant_value) .. ']')
 		aux.print('- tooltip disenchant distribution [' .. status(tooltip_settings.disenchant_distribution) .. ']')
+		aux.print('- tooltip wowauctions [' .. status(tooltip_settings.wowauctions) .. ']')
 		aux.print('- clear item cache')
 		aux.print('- populate wdb')
 		aux.print('- sharing [' .. status(aux.account_data.sharing) .. ']')
@@ -106,5 +145,8 @@ function SlashCmdList.AUX(command)
             aux.color[aux.account_data.theme == 'modern' and 'green' or 'red']('modern') .. ']')
 		aux.print('- show hidden [' .. status(aux.account_data.showhidden) .. ']')
 		aux.print('- purchase summary [' .. status(aux.account_data.purchase_summary) .. ']')
+		aux.print('- reset profit')
+		aux.print('- top [N] - Show top N profitable items')
+		aux.print('- wowauction <item> - Get WoWAuctions.net link')
     end
 end

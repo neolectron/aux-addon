@@ -77,6 +77,25 @@ function aux.handle.INIT_UI()
         real_time_button = btn
     end
     do
+        local checkbox = gui.checkbox(frame)
+        checkbox:SetPoint('LEFT', range_button, 'LEFT', -55, 0)
+        checkbox:SetWidth(16)
+        checkbox:SetHeight(16)
+        checkbox:SetScript('OnClick', function()
+            if this:GetChecked() then
+                PlaySound('igMainMenuOptionCheckBoxOn')
+            else
+                PlaySound('igMainMenuOptionCheckBoxOff')
+            end
+        end)
+        local label = gui.label(checkbox, gui.font_size.small)
+        label:SetPoint('LEFT', checkbox, 'RIGHT', 4, 0)
+        label:SetText('Rev')
+        label:SetTextColor(aux.color.label.enabled())
+        checkbox.label = label
+        reverse_checkbox = checkbox
+    end
+    do
         local function change()
             local page = tonumber(this:GetText())
             local valid_input = page and tostring(max(1, page)) or ''

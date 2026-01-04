@@ -4,6 +4,7 @@ local T = require 'T'
 local aux = require 'aux'
 local info = require 'aux.util.info'
 local history = require 'aux.core.history'
+local money = require 'aux.util.money'
 
 local PAGE_SIZE = 50
 
@@ -81,7 +82,15 @@ function scan()
 		do (get_state().params.on_start_query or pass)(get_state().query_index) end
 		if get_query().blizzard_query then
 			if (get_query().blizzard_query.first_page or 0) <= (get_query().blizzard_query.last_page or aux.huge) then
-				get_state().page = get_query().blizzard_query.first_page or 0
+				-- Support reverse scanning
+				if get_state().params.reverse and not get_state().reverse_initialized then
+					-- Start at page 0 to get total auctions, will switch to last page after
+					get_state().page = 0
+					get_state().reverse_initialized = true
+					get_state().finding_last_page = true
+				else
+					get_state().page = get_query().blizzard_query.first_page or 0
+				end
 				return submit_query()
 			end
 		else
@@ -131,10 +140,27 @@ function scan_page(i)
 
 	if i > PAGE_SIZE then
 		do (get_state().params.on_page_scanned or pass)() end
-		if get_query().blizzard_query and get_state().page < last_page(get_state().total_auctions) then
-			get_state().page = get_state().page + 1
+		if get_query().blizzard_query then
+			local last = last_page(get_state().total_auctions)
+			local first = get_query().blizzard_query.first_page or 0
 			
-			return submit_query()
+			if get_state().params.reverse then
+				-- Reverse: go from last page to first
+				if get_state().page > first then
+					get_state().page = get_state().page - 1
+					return submit_query()
+				else
+					return scan()
+				end
+			else
+				-- Normal: go from first to last
+				if get_state().page < last then
+					get_state().page = get_state().page + 1
+					return submit_query()
+				else
+					return scan()
+				end
+			end
 		else
 			return scan()
 		end
@@ -155,17 +181,16 @@ function scan_page(i)
 		if (get_state().params.auto_buy_validator or pass)(auction_info) and auction_info.buyout_price >0 and auction_info.owner ~= UnitName("player") then
 			-- Play alert sound for auto-buy deal found
 			PlaySound("LEVELUP")
-			aux.print(aux.color.green("AUTO-BUY: ") .. (auction_info.name or "item") .. " for " .. aux.money.to_string(auction_info.buyout_price))
-			local send_signal, signal_received = aux.signal()
-			aux.when(signal_received, scan_page, i)
-			return aux.place_bid(auction_info.query_type, auction_info.index, auction_info.buyout_price, send_signal)
+			aux.print(aux.color.green("AUTO-BUY: ") .. (auction_info.name or "item") .. " for " .. money.to_string(auction_info.buyout_price, true))
+			-- Instant buy: place bid and continue scanning immediately (don't wait)
+			aux.place_bid(auction_info.query_type, auction_info.index, auction_info.buyout_price, pass, true)
+			-- Continue to next auction without waiting
 		elseif (get_state().params.auto_bid_validator or pass)(auction_info) and auction_info.owner ~= UnitName("player") and auction_info.high_bidder == nil then
 			-- Play alert sound for auto-bid deal found
 			PlaySound("igQuestListOpen")
-			aux.print(aux.color.blue("AUTO-BID: ") .. (auction_info.name or "item") .. " for " .. aux.money.to_string(auction_info.bid_price))
-			local send_signal, signal_received = aux.signal()
-			aux.when(signal_received, scan_page, i)
-			return aux.place_bid(auction_info.query_type, auction_info.index, auction_info.bid_price, send_signal)
+			aux.print(aux.color.blue("AUTO-BID: ") .. (auction_info.name or "item") .. " for " .. money.to_string(auction_info.bid_price, true))
+			-- Instant bid: place bid and continue scanning immediately (don't wait)
+			aux.place_bid(auction_info.query_type, auction_info.index, auction_info.bid_price, pass, false)
 		elseif not get_query().validator or get_query().validator(auction_info) then
 			do (get_state().params.on_auction or pass)(auction_info) end
 		end
@@ -186,10 +211,30 @@ end
 
 function accept_results()
 	_,  get_state().total_auctions = GetNumAuctionItems(get_state().params.type)
+	
+	-- Handle reverse scan: after first query, jump to last page
+	if get_state().finding_last_page then
+		get_state().finding_last_page = false
+		local last = last_page(get_state().total_auctions)
+		get_state().page = last
+		return submit_query()
+	end
+	
 	do
+		local current, total_display
+		if get_state().params.reverse then
+			-- Reverse: show countdown
+			local last = last_page(get_state().total_auctions)
+			local first = get_query().blizzard_query.first_page or 0
+			current = last - get_state().page + 1
+			total_display = last - first + 1
+		else
+			current = get_state().page - (get_query().blizzard_query.first_page or 0) + 1
+			total_display = last_page(get_state().total_auctions) - (get_query().blizzard_query.first_page or 0) + 1
+		end
 		(get_state().params.on_page_loaded or pass)(
-			get_state().page - (get_query().blizzard_query.first_page or 0) + 1,
-			last_page(get_state().total_auctions) - (get_query().blizzard_query.first_page or 0) + 1,
+			current,
+			total_display,
 			total_pages(get_state().total_auctions) - 1
 		)
 	end
