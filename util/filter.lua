@@ -260,6 +260,8 @@ M.filters = {
 	},
 
 	-- Filter: only show crafting materials below their max profitable price
+	-- WARNING: May cause leftover materials if used with auto-buy on multi-material recipes
+	-- Use craft-safe for worry-free auto-buying
 	-- Usage: /craft-profit (any profit) or /craft-profit/50 (50% margin)
 	['craft-profit'] = {
 		input_type = 'number',
@@ -267,6 +269,26 @@ M.filters = {
 			local margin = (margin_pct or 0) / 100  -- Default: any profit
 			return function(auction_record)
 				if auction_record.buyout_price == 0 then return false end
+				local max_price = craft_vendor.get_max_mat_price(auction_record.item_id, margin)
+				if not max_price or max_price <= 0 then return false end
+				return auction_record.unit_buyout_price <= max_price
+			end
+		end
+	},
+
+	-- Filter: SAFE auto-buy - only single-material recipes (ore→bar, stone→powder)
+	-- These have NO shared materials, so you can never have leftover waste
+	-- Perfect for AFK sniping with auto-buy enabled
+	-- Usage: /craft-safe (any profit) or /craft-safe/50 (50% margin)
+	['craft-safe'] = {
+		input_type = 'number',
+		validator = function(margin_pct)
+			local margin = (margin_pct or 0) / 100
+			return function(auction_record)
+				if auction_record.buyout_price == 0 then return false end
+				-- Must be a "safe" material (only used in single-mat recipes)
+				if not craft_vendor.is_safe_material(auction_record.item_id) then return false end
+				-- Check profitability
 				local max_price = craft_vendor.get_max_mat_price(auction_record.item_id, margin)
 				if not max_price or max_price <= 0 then return false end
 				return auction_record.unit_buyout_price <= max_price

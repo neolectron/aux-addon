@@ -160,11 +160,43 @@ function SlashCmdList.AUX(command)
 					end
 				end
 			end
+		elseif arguments[2] == 'profitable' then
+			craft_vendor.print_profitable()
+		elseif arguments[2] == 'safe' then
+			craft_vendor.print_safe_materials()
+		elseif arguments[2] == 'ready' then
+			-- Show what can be crafted with bought materials
+			local craftable = craft_vendor.get_craftable()
+			if getn(craftable) == 0 then
+				aux.print('No recipes ready. Keep buying materials!')
+				craft_vendor.print_missing()
+			else
+				aux.print(aux.color.green('=== READY TO CRAFT ==='))
+				local total_profit = 0
+				for _, item in ipairs(craftable) do
+					local profit_str = money.to_string(item.profit_each, nil, true)
+					local total_str = money.to_string(item.total_profit, nil, true)
+					aux.print(format('  %dx %s → +%s each (total: +%s)',
+						item.quantity,
+						item.name,
+						profit_str,
+						total_str
+					))
+					total_profit = total_profit + item.total_profit
+				end
+				aux.print(aux.color.gold('Total potential profit: +' .. money.to_string(total_profit, nil, true)))
+			end
+		elseif arguments[2] == 'missing' then
+			craft_vendor.print_missing()
 		else
 			aux.print('Craft commands:')
 			aux.print('- craft status - Show collected materials')
+			aux.print('- craft ready - Show what you can craft NOW')
+			aux.print('- craft missing - Show what materials you still need')
+			aux.print('- craft safe - List safe materials (no leftover risk)')
 			aux.print('- craft recipes - List all recipes')
 			aux.print('- craft maxprice [margin%] - Show max prices for materials')
+			aux.print('- craft profitable - Show profitable crafts (uses market data)')
 			aux.print('- craft reset - Clear session')
 		end
 	else
@@ -193,6 +225,6 @@ function SlashCmdList.AUX(command)
 		aux.print('- reset profit')
 		aux.print('- top [N] - Show top N profitable items')
 		aux.print('- wowauction <item> - Get WoWAuctions.net link')
-		aux.print('- craft <status|recipes|maxprice|reset>')
+		aux.print('- craft <status|ready|missing|safe|recipes|profitable|reset>')
     end
 end

@@ -21,11 +21,15 @@ function update_real_time(enable)
 	if enable then
 		range_button:Hide()
 		real_time_button:Show()
+		search_box:ClearAllPoints()
 		search_box:SetPoint('LEFT', real_time_button, 'RIGHT', gui.is_blizzard() and 8 or 4, 0)
+		search_box:SetPoint('RIGHT', reverse_checkbox, 'LEFT', -30, 0)
 	else
 		real_time_button:Hide()
 		range_button:Show()
+		search_box:ClearAllPoints()
 		search_box:SetPoint('LEFT', last_page_input, 'RIGHT', gui.is_blizzard() and 8 or 4, 0)
+		search_box:SetPoint('RIGHT', reverse_checkbox, 'LEFT', -30, 0)
 	end
 end
 

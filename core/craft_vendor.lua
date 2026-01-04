@@ -6,254 +6,265 @@ local info = require 'aux.util.info'
 local money = require 'aux.util.money'
 
 -- Craft-to-Vendor Recipe Database
--- Prices verified from database.turtlecraft.gg
+-- For Mining + Engineering professions
 -- Each recipe: materials needed, output item, vendor price (per unit), output quantity
--- base_value = opportunity cost of material (vendor sell price, or craft cost for intermediates)
+-- base_value = opportunity cost of material (vendor sell price)
 M.recipes = {
     -- ============ SMELTING (Mining) ============
-    -- Ore vendor prices: Copper 5c, Tin 25c, Iron 1s50c, Mithril 2s50c, Thorium 2s50c
-    -- Bar vendor prices: Copper 10c, Bronze 50c, Iron 2s, Steel 60c, Mithril 4s, Thorium 6s
+    -- Only profitable conversions - buy ore cheap, smelt, vendor bars
     
     ["Copper Bar"] = {
         output_id = 2840,
-        vendor_price = 10,  -- 10c (from DB)
+        vendor_price = 10,  -- 10c
         output_quantity = 1,
         materials = {
-            { item_id = 2770, name = "Copper Ore", quantity = 1, base_value = 5 },  -- vendor sell 5c
+            { item_id = 2770, name = "Copper Ore", quantity = 1, base_value = 5 },
         }
     },
     ["Tin Bar"] = {
         output_id = 3576,
-        vendor_price = 25,  -- 25c estimate (same as ore)
+        vendor_price = 25,  -- 25c
         output_quantity = 1,
         materials = {
-            { item_id = 2771, name = "Tin Ore", quantity = 1, base_value = 25 },  -- vendor sell 25c
+            { item_id = 2771, name = "Tin Ore", quantity = 1, base_value = 25 },
         }
     },
     ["Bronze Bar"] = {
         output_id = 2841,
-        vendor_price = 50,  -- 50c each (from DB)
-        output_quantity = 2,  -- Makes 2 bars = 1s total
+        vendor_price = 50,  -- 50c each, makes 2 = 1s total
+        output_quantity = 2,
         materials = {
-            { item_id = 2840, name = "Copper Bar", quantity = 1, base_value = 10 },  -- vendor sell 10c
-            { item_id = 3576, name = "Tin Bar", quantity = 1, base_value = 25 },     -- vendor sell 25c
-        }
-    },
-    ["Silver Bar"] = {
-        output_id = 2842,
-        vendor_price = 150,  -- 1s50c estimate
-        output_quantity = 1,
-        materials = {
-            { item_id = 2775, name = "Silver Ore", quantity = 1, base_value = 75 },  -- estimate
+            { item_id = 2840, name = "Copper Bar", quantity = 1, base_value = 10 },
+            { item_id = 3576, name = "Tin Bar", quantity = 1, base_value = 25 },
         }
     },
     ["Iron Bar"] = {
         output_id = 3575,
-        vendor_price = 200,  -- 2s (from DB)
+        vendor_price = 200,  -- 2s
         output_quantity = 1,
         materials = {
-            { item_id = 2772, name = "Iron Ore", quantity = 1, base_value = 150 },  -- vendor sell 1s50c
+            { item_id = 2772, name = "Iron Ore", quantity = 1, base_value = 150 },
         }
     },
     ["Gold Bar"] = {
         output_id = 3577,
-        vendor_price = 600,  -- 6s estimate
+        vendor_price = 600,  -- 6s
         output_quantity = 1,
         materials = {
-            { item_id = 2776, name = "Gold Ore", quantity = 1, base_value = 300 },  -- estimate
-        }
-    },
-    ["Steel Bar"] = {
-        output_id = 3859,
-        vendor_price = 60,  -- 60c (from DB) - Note: worse than Iron Bar!
-        output_quantity = 1,
-        materials = {
-            { item_id = 3575, name = "Iron Bar", quantity = 1, base_value = 200 },   -- vendor sell 2s
-            { item_id = 3857, name = "Coal", quantity = 1, base_value = 5 },  -- vendor buy ~5c
+            { item_id = 2776, name = "Gold Ore", quantity = 1, base_value = 300 },
         }
     },
     ["Mithril Bar"] = {
         output_id = 3860,
-        vendor_price = 400,  -- 4s (from DB)
+        vendor_price = 400,  -- 4s
         output_quantity = 1,
         materials = {
-            { item_id = 3858, name = "Mithril Ore", quantity = 1, base_value = 250 },  -- vendor sell 2s50c
+            { item_id = 3858, name = "Mithril Ore", quantity = 1, base_value = 250 },
         }
     },
     ["Truesilver Bar"] = {
         output_id = 6037,
-        vendor_price = 500,  -- 5s estimate
+        vendor_price = 500,  -- 5s
         output_quantity = 1,
         materials = {
-            { item_id = 7911, name = "Truesilver Ore", quantity = 1, base_value = 250 },  -- estimate
+            { item_id = 7911, name = "Truesilver Ore", quantity = 1, base_value = 250 },
         }
     },
     ["Thorium Bar"] = {
         output_id = 12359,
-        vendor_price = 600,  -- 6s (from DB)
+        vendor_price = 600,  -- 6s
         output_quantity = 1,
         materials = {
-            { item_id = 10620, name = "Thorium Ore", quantity = 1, base_value = 250 },  -- vendor sell 2s50c
+            { item_id = 10620, name = "Thorium Ore", quantity = 1, base_value = 250 },
         }
     },
     
     -- ============ ENGINEERING - Blasting Powders ============
-    -- Stone vendor prices: Rough 2c, Coarse 15c, Heavy 60c, Solid 1s, Dense 2s50c
+    -- Stone → Powder (all single-material, safe for auto-buy)
     
     ["Rough Blasting Powder"] = {
         output_id = 4357,
-        vendor_price = 4,  -- 4c each (from DB), makes 2 = 8c total
+        vendor_price = 4,  -- 4c each, makes 2 = 8c total
         output_quantity = 2,
         materials = {
-            { item_id = 2835, name = "Rough Stone", quantity = 1, base_value = 2 },  -- vendor sell 2c
+            { item_id = 2835, name = "Rough Stone", quantity = 1, base_value = 2 },
         }
     },
     ["Coarse Blasting Powder"] = {
         output_id = 4364,
-        vendor_price = 12,  -- 12c each (from DB), makes 2 = 24c total
+        vendor_price = 12,  -- 12c each, makes 2 = 24c total
         output_quantity = 2,
         materials = {
-            { item_id = 2836, name = "Coarse Stone", quantity = 1, base_value = 15 },  -- vendor sell 15c
+            { item_id = 2836, name = "Coarse Stone", quantity = 1, base_value = 15 },
         }
     },
     ["Heavy Blasting Powder"] = {
         output_id = 4377,
-        vendor_price = 150,  -- 1s50c each (from DB), makes 2 = 3s total
+        vendor_price = 150,  -- 1s50c each, makes 2 = 3s total
         output_quantity = 2,
         materials = {
-            { item_id = 2838, name = "Heavy Stone", quantity = 1, base_value = 60 },  -- vendor sell 60c
+            { item_id = 2838, name = "Heavy Stone", quantity = 1, base_value = 60 },
         }
     },
     ["Solid Blasting Powder"] = {
         output_id = 10505,
-        vendor_price = 250,  -- 2s50c each (from DB), makes 2 = 5s total
+        vendor_price = 250,  -- 2s50c each, makes 2 = 5s total
         output_quantity = 2,
         materials = {
-            { item_id = 7912, name = "Solid Stone", quantity = 1, base_value = 100 },  -- vendor sell 1s
+            { item_id = 7912, name = "Solid Stone", quantity = 1, base_value = 100 },
         }
     },
     ["Dense Blasting Powder"] = {
         output_id = 15992,
-        vendor_price = 250,  -- 2s50c each (from DB), makes 2 = 5s total
+        vendor_price = 250,  -- 2s50c each, makes 2 = 5s total
         output_quantity = 2,
         materials = {
-            { item_id = 12365, name = "Dense Stone", quantity = 1, base_value = 250 },  -- vendor sell 2s50c
+            { item_id = 12365, name = "Dense Stone", quantity = 1, base_value = 250 },
         }
     },
     
     -- ============ ENGINEERING - Components ============
+    -- These can be profitable if materials are cheap
+    
     ["Handful of Copper Bolts"] = {
         output_id = 4359,
-        vendor_price = 12,  -- 12c each (from DB), makes 2 = 24c total
+        vendor_price = 12,  -- 12c each, makes 2 = 24c total
         output_quantity = 2,
         materials = {
-            { item_id = 2840, name = "Copper Bar", quantity = 1, base_value = 10 },  -- vendor sell 10c
+            { item_id = 2840, name = "Copper Bar", quantity = 1, base_value = 10 },
         }
     },
     ["Copper Tube"] = {
         output_id = 4361,
-        vendor_price = 120,  -- 1s20c (from DB)
+        vendor_price = 120,  -- 1s20c
         output_quantity = 1,
         materials = {
-            { item_id = 2840, name = "Copper Bar", quantity = 2, base_value = 10 },  -- vendor sell 10c each
-            { item_id = 4357, name = "Rough Blasting Powder", quantity = 1, base_value = 1 },  -- craft cost: 1c (half a 2c stone)
+            { item_id = 2840, name = "Copper Bar", quantity = 2, base_value = 10 },
+            { item_id = 4357, name = "Rough Blasting Powder", quantity = 1, base_value = 1 },
         }
     },
     ["Bronze Tube"] = {
         output_id = 4371,
-        vendor_price = 200,  -- 2s (from DB)
+        vendor_price = 200,  -- 2s
         output_quantity = 1,
         materials = {
-            { item_id = 2841, name = "Bronze Bar", quantity = 2, base_value = 50 },  -- vendor sell 50c each
-            { item_id = 4357, name = "Rough Blasting Powder", quantity = 1, base_value = 1 },  -- craft cost 1c
+            { item_id = 2841, name = "Bronze Bar", quantity = 2, base_value = 50 },
+            { item_id = 4357, name = "Rough Blasting Powder", quantity = 1, base_value = 1 },
         }
     },
     ["Whirring Bronze Gizmo"] = {
         output_id = 4375,
-        vendor_price = 115,  -- 1s15c (from DB)
+        vendor_price = 115,  -- 1s15c
         output_quantity = 1,
         materials = {
-            { item_id = 2841, name = "Bronze Bar", quantity = 2, base_value = 50 },  -- vendor sell 50c each
-            { item_id = 2592, name = "Wool Cloth", quantity = 1, base_value = 10 },  -- vendor sell ~10c
-        }
-    },
-    ["Iron Strut"] = {
-        output_id = 4387,
-        vendor_price = 4,  -- 4c (from DB) - terrible ratio!
-        output_quantity = 1,
-        materials = {
-            { item_id = 3575, name = "Iron Bar", quantity = 2, base_value = 200 },  -- vendor sell 2s each
+            { item_id = 2841, name = "Bronze Bar", quantity = 2, base_value = 50 },
+            { item_id = 2592, name = "Wool Cloth", quantity = 1, base_value = 10 },
         }
     },
     ["Gyrochronatom"] = {
         output_id = 4389,
-        vendor_price = 500,  -- 5s estimate
+        vendor_price = 500,  -- 5s
         output_quantity = 1,
         materials = {
-            { item_id = 3575, name = "Iron Bar", quantity = 1, base_value = 200 },  -- vendor sell 2s
-            { item_id = 10558, name = "Gold Power Core", quantity = 1, base_value = 100 },  -- estimate
+            { item_id = 3575, name = "Iron Bar", quantity = 1, base_value = 200 },
+            { item_id = 10558, name = "Gold Power Core", quantity = 1, base_value = 100 },
         }
     },
     ["Mithril Tube"] = {
         output_id = 10559,
-        vendor_price = 750,  -- 7s50c (from DB)
+        vendor_price = 750,  -- 7s50c
         output_quantity = 1,
         materials = {
-            { item_id = 3860, name = "Mithril Bar", quantity = 3, base_value = 400 },  -- vendor sell 4s each
+            { item_id = 3860, name = "Mithril Bar", quantity = 3, base_value = 400 },
         }
     },
     ["Unstable Trigger"] = {
         output_id = 10560,
-        vendor_price = 1000,  -- 10s (from DB)
+        vendor_price = 1000,  -- 10s
         output_quantity = 1,
         materials = {
-            { item_id = 3860, name = "Mithril Bar", quantity = 1, base_value = 400 },  -- vendor sell 4s
-            { item_id = 4338, name = "Mageweave Cloth", quantity = 1, base_value = 50 },  -- vendor sell ~50c
-            { item_id = 10505, name = "Solid Blasting Powder", quantity = 1, base_value = 50 },  -- craft cost: 50c (half a 1s stone)
-        }
-    },
-    ["Thorium Widget"] = {
-        output_id = 15994,
-        vendor_price = 2500,  -- 25s (from DB)
-        output_quantity = 1,
-        materials = {
-            { item_id = 12359, name = "Thorium Bar", quantity = 3, base_value = 600 },  -- vendor sell 6s each
-            { item_id = 14047, name = "Runecloth", quantity = 1, base_value = 100 },  -- vendor sell ~1s
+            { item_id = 3860, name = "Mithril Bar", quantity = 1, base_value = 400 },
+            { item_id = 4338, name = "Mageweave Cloth", quantity = 1, base_value = 50 },
+            { item_id = 10505, name = "Solid Blasting Powder", quantity = 1, base_value = 50 },
         }
     },
 }
 
 -- Build reverse lookup: material item_id -> list of recipes that use it
-M.material_to_recipes = {}
+material_to_recipes = {}
 
-function M.build_material_index()
-    M.material_to_recipes = {}
+-- Materials that are ONLY used in single-material recipes (safe to buy freely)
+safe_materials = {}
+
+function build_material_index()
+    material_to_recipes = {}
+    safe_materials = {}
+    
     for recipe_name, recipe in pairs(recipes) do
         for _, mat in ipairs(recipe.materials) do
-            if not M.material_to_recipes[mat.item_id] then
-                M.material_to_recipes[mat.item_id] = {}
+            if not material_to_recipes[mat.item_id] then
+                material_to_recipes[mat.item_id] = {}
             end
-            tinsert(M.material_to_recipes[mat.item_id], {
+            tinsert(material_to_recipes[mat.item_id], {
                 recipe_name = recipe_name,
                 recipe = recipe,
                 mat_quantity = mat.quantity,
             })
         end
     end
+    
+    -- Identify "safe" materials: only used in single-material recipes
+    -- These can be bought freely without worrying about ratio conflicts
+    for item_id, recipe_list in pairs(material_to_recipes) do
+        local is_safe = true
+        for _, entry in ipairs(recipe_list) do
+            -- Check if this recipe has multiple materials
+            if getn(entry.recipe.materials) > 1 then
+                is_safe = false
+                break
+            end
+        end
+        if is_safe then
+            safe_materials[item_id] = true
+        end
+    end
+end
+
+-- Check if a material is "safe" (only used in single-material recipes)
+function M.is_safe_material(item_id)
+    return safe_materials[item_id] == true
+end
+
+-- Get the best available price for a material:
+-- 1. Live market data from aux history (if available)
+-- 2. Fall back to base_value (vendor sell price)
+local function get_material_market_price(item_id, base_value)
+    local history = require 'aux.core.history'
+    local item_key = item_id .. ':0'  -- Most materials have suffix 0
+    local market_price = history.value(item_key)
+    
+    if market_price and market_price > 0 then
+        return market_price, true  -- Return price and "is_market_data" flag
+    end
+    
+    -- Fall back to base_value if no market data
+    return base_value or 0, false
 end
 
 -- Calculate the max price you should pay for a material to profit from crafting
--- Returns: max_price per unit, recipe_name, profit_per_craft
+-- Uses LIVE MARKET DATA for other materials when available
+-- Returns: max_price per unit, recipe_name, profit_per_craft, uses_market_data
 -- profit_margin: 0 = any profit (1c+), 0.5 = 50% margin, etc.
 function M.get_max_mat_price(item_id, profit_margin)
     profit_margin = profit_margin or 0  -- Default: any profit (1c minimum)
     
-    local recipe_list = M.material_to_recipes[item_id]
+    local recipe_list = material_to_recipes[item_id]
     if not recipe_list then return nil end
     
     local best_price = 0
     local best_recipe = nil
     local best_profit = 0
+    local best_uses_market = false
     
     for _, entry in ipairs(recipe_list) do
         local recipe = entry.recipe
@@ -262,14 +273,17 @@ function M.get_max_mat_price(item_id, profit_margin)
         -- Calculate total vendor value of output
         local total_vendor = recipe.vendor_price * recipe.output_quantity
         
-        -- Calculate cost of OTHER materials using their base_value (opportunity cost)
-        -- This is what you'd get if you vendored them, or their craft cost
+        -- Calculate cost of OTHER materials using MARKET DATA when available
         local other_mats_cost = 0
+        local all_have_market_data = true
         for _, mat in ipairs(recipe.materials) do
             if mat.item_id ~= item_id then
-                -- Use base_value from recipe database (vendor sell or craft cost)
-                local mat_cost = mat.base_value or 0
+                -- Try to get market price, fall back to base_value
+                local mat_cost, has_market = get_material_market_price(mat.item_id, mat.base_value)
                 other_mats_cost = other_mats_cost + (mat_cost * mat.quantity)
+                if not has_market then
+                    all_have_market_data = false
+                end
             end
         end
         
@@ -282,10 +296,138 @@ function M.get_max_mat_price(item_id, profit_margin)
             best_price = max_price_per_unit
             best_recipe = entry.recipe_name
             best_profit = total_vendor - other_mats_cost - (max_price_per_unit * mat_qty)
+            best_uses_market = all_have_market_data
         end
     end
     
-    return best_price, best_recipe, best_profit
+    return best_price, best_recipe, best_profit, best_uses_market
+end
+
+-- Evaluate a full recipe using current market prices for ALL materials
+-- Returns: profit per craft, total_cost, uses_all_market_data
+function M.evaluate_recipe(recipe_name)
+    local recipe = recipes[recipe_name]
+    if not recipe then return nil end
+    
+    local total_vendor = recipe.vendor_price * recipe.output_quantity
+    local total_cost = 0
+    local all_have_market_data = true
+    local material_costs = {}
+    
+    for _, mat in ipairs(recipe.materials) do
+        local mat_cost, has_market = get_material_market_price(mat.item_id, mat.base_value)
+        local line_cost = mat_cost * mat.quantity
+        total_cost = total_cost + line_cost
+        
+        material_costs[mat.name] = {
+            unit_cost = mat_cost,
+            quantity = mat.quantity,
+            line_cost = line_cost,
+            has_market_data = has_market,
+        }
+        
+        if not has_market then
+            all_have_market_data = false
+        end
+    end
+    
+    local profit = total_vendor - total_cost
+    
+    return {
+        recipe_name = recipe_name,
+        vendor_value = total_vendor,
+        total_cost = total_cost,
+        profit = profit,
+        profit_margin = total_vendor > 0 and (profit / total_vendor) or 0,
+        materials = material_costs,
+        all_market_data = all_have_market_data,
+    }
+end
+
+-- Find all profitable recipes based on current market data
+-- Returns list of recipes sorted by profit
+function M.find_profitable_recipes(min_profit)
+    min_profit = min_profit or 1  -- Default: at least 1 copper profit
+    
+    local profitable = {}
+    
+    for recipe_name, _ in pairs(recipes) do
+        local eval = M.evaluate_recipe(recipe_name)
+        if eval and eval.profit >= min_profit then
+            tinsert(profitable, eval)
+        end
+    end
+    
+    -- Sort by profit (highest first)
+    table.sort(profitable, function(a, b) return a.profit > b.profit end)
+    
+    return profitable
+end
+
+-- Print profitable recipes using market data
+function M.print_profitable()
+    local money = require 'aux.util.money'
+    aux.print(aux.color.gold('--- Profitable Crafts (Market Prices) ---'))
+    
+    local profitable = M.find_profitable_recipes(1)
+    
+    if getn(profitable) == 0 then
+        aux.print('No profitable recipes found with current market data.')
+        aux.print('Try scanning more items to build price history.')
+        return
+    end
+    
+    for i = 1, math.min(10, getn(profitable)) do
+        local r = profitable[i]
+        local profit_str = money.to_string(r.profit, nil, true)
+        local cost_str = money.to_string(r.total_cost, nil, true)
+        local vendor_str = money.to_string(r.vendor_value, nil, true)
+        local data_flag = r.all_market_data and aux.color.green('✓') or aux.color.red('~')
+        local safe_flag = ''
+        -- Check if all materials are single-material (safe)
+        local is_single_mat = getn(r.materials) == 1 or false
+        for _, _ in pairs(r.materials) do
+            -- Count materials
+        end
+        if is_single_mat then
+            safe_flag = aux.color.blue('[S]') .. ' '
+        end
+        
+        aux.print(format('%s%s %s: +%s profit (cost %s → vendor %s)',
+            safe_flag,
+            data_flag,
+            r.recipe_name,
+            profit_str,
+            cost_str,
+            vendor_str
+        ))
+    end
+    
+    aux.print(aux.color.green('✓') .. ' = market data | ' .. aux.color.red('~') .. ' = estimated | ' .. aux.color.blue('[S]') .. ' = single-material (safe)')
+end
+
+-- Print list of safe materials (only used in single-material recipes)
+function M.print_safe_materials()
+    aux.print(aux.color.gold('--- Safe Materials (No Leftover Risk) ---'))
+    aux.print('These materials are only used in single-material recipes.')
+    aux.print('Use filter: craft-safe/1c/sellable for auto-buy sniping')
+    aux.print('')
+    
+    local safe_list = {}
+    for item_id, _ in pairs(safe_materials) do
+        local recipe_list = material_to_recipes[item_id]
+        if recipe_list and getn(recipe_list) > 0 then
+            local mat_name = recipe_list[1].recipe.materials[1].name
+            local recipe_name = recipe_list[1].recipe_name
+            tinsert(safe_list, { name = mat_name, recipe = recipe_name })
+        end
+    end
+    
+    table.sort(safe_list, function(a, b) return a.name < b.name end)
+    
+    for _, item in ipairs(safe_list) do
+        aux.print(format('  %s → %s', item.name, item.recipe))
+    end
 end
 
 -- Session tracking for material purchases
@@ -396,6 +538,138 @@ function M.print_session()
     end
 end
 
+-- Check what recipes we're close to completing (have some materials)
+function M.get_partial_recipes()
+    local partial = {}
+    
+    for recipe_name, recipe in pairs(recipes) do
+        local have_any = false
+        local missing = {}
+        local have = {}
+        
+        for _, mat in ipairs(recipe.materials) do
+            local session_mat = M.craft_session[mat.item_id]
+            if session_mat and session_mat.quantity > 0 then
+                have_any = true
+                have[mat.name] = session_mat.quantity
+            else
+                missing[mat.name] = {
+                    item_id = mat.item_id,
+                    quantity = mat.quantity,
+                }
+            end
+        end
+        
+        if have_any and next(missing) then
+            tinsert(partial, {
+                name = recipe_name,
+                recipe = recipe,
+                have = have,
+                missing = missing,
+            })
+        end
+    end
+    
+    return partial
+end
+
+-- Calculate how many more of a material we need to balance with what we have
+-- Returns: quantity still needed, or 0 if we have enough
+-- This prevents buying excess materials that won't match other materials
+function M.get_needed_quantity(item_id, target_crafts)
+    target_crafts = target_crafts or 1  -- Default: aim for 1 craft
+    
+    local recipe_list = material_to_recipes[item_id]
+    if not recipe_list then return 0 end
+    
+    local max_needed = 0
+    
+    for _, entry in ipairs(recipe_list) do
+        local recipe = entry.recipe
+        local mat_qty_per_craft = entry.mat_quantity
+        
+        -- How many crafts can we do with current materials?
+        local min_crafts = 999999
+        local have_this = 0
+        
+        for _, mat in ipairs(recipe.materials) do
+            local session_mat = M.craft_session[mat.item_id]
+            local have = session_mat and session_mat.quantity or 0
+            
+            if mat.item_id == item_id then
+                have_this = have
+            end
+            
+            local crafts_possible = math.floor(have / mat.quantity)
+            if crafts_possible < min_crafts then
+                min_crafts = crafts_possible
+            end
+        end
+        
+        -- How many of THIS item do we need to reach target_crafts?
+        local target = math.max(target_crafts, min_crafts + 1)  -- At least one more craft
+        local total_needed = target * mat_qty_per_craft
+        local still_need = total_needed - have_this
+        
+        if still_need > max_needed then
+            max_needed = still_need
+        end
+    end
+    
+    return math.max(0, max_needed)
+end
+
+-- Check if buying more of this material makes sense (ratio-aware)
+-- Returns true if we need more to balance our materials
+function M.should_buy_material(item_id)
+    return M.get_needed_quantity(item_id, 1) > 0
+end
+
+-- Print what materials are still needed
+function M.print_missing()
+    aux.print(aux.color.gold('--- Missing Materials ---'))
+    
+    local partial = M.get_partial_recipes()
+    
+    if getn(partial) == 0 then
+        aux.print('No partial recipes. Buy some materials first!')
+        return
+    end
+    
+    for _, p in ipairs(partial) do
+        local missing_str = ''
+        for name, data in pairs(p.missing) do
+            if missing_str ~= '' then missing_str = missing_str .. ', ' end
+            missing_str = missing_str .. data.quantity .. 'x ' .. name
+        end
+        aux.print(format('%s: Need %s', p.name, missing_str))
+    end
+end
+
+-- Called when a craft material is auto-bought - checks if we can now craft something
+function M.on_material_bought(item_id, item_name, quantity, cost)
+    -- Add to session
+    M.add_to_session(item_id, item_name, quantity, cost)
+    
+    -- Check if this completes any recipes
+    local craftable = M.get_craftable()
+    
+    if getn(craftable) > 0 then
+        -- Play a sound and notify
+        PlaySound("QUESTCOMPLETE")
+        aux.print(aux.color.green('=== CRAFT READY ==='))
+        for _, item in ipairs(craftable) do
+            local profit_str = money.to_string(item.profit_each, nil, true)
+            local total_str = money.to_string(item.total_profit, nil, true)
+            aux.print(format('  %dx %s → +%s profit!',
+                item.quantity,
+                item.name,
+                total_str
+            ))
+        end
+    end
+end
+
 -- Print all profitable recipes
 function M.print_recipes()
     aux.print(aux.color.gold('--- Craft-to-Vendor Recipes ---'))
@@ -427,5 +701,7 @@ function M.print_recipes()
     end
 end
 
--- Initialize immediately so filter can use it
-build_material_index()
+-- Initialize on addon load
+function aux.handle.LOAD()
+    build_material_index()
+end

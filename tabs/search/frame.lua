@@ -78,7 +78,7 @@ function aux.handle.INIT_UI()
     end
     do
         local checkbox = gui.checkbox(frame)
-        checkbox:SetPoint('LEFT', range_button, 'LEFT', -55, 0)
+        checkbox:SetPoint('RIGHT', start_button, 'LEFT', -25, 0)
         checkbox:SetWidth(16)
         checkbox:SetHeight(16)
         checkbox:SetScript('OnClick', function()
@@ -89,7 +89,7 @@ function aux.handle.INIT_UI()
             end
         end)
         local label = gui.label(checkbox, gui.font_size.small)
-        label:SetPoint('LEFT', checkbox, 'RIGHT', 4, 0)
+        label:SetPoint('RIGHT', checkbox, 'LEFT', -2, 0)
         label:SetText('Rev')
         label:SetTextColor(aux.color.label.enabled())
         checkbox.label = label
@@ -199,6 +199,30 @@ function aux.handle.INIT_UI()
         end)
         editbox.enter = execute
         search_box = editbox
+    end
+    do
+        local checkbox = gui.checkbox(frame)
+        checkbox:SetPoint('RIGHT', resume_button, 'LEFT', -8, 0)
+        checkbox:SetWidth(16)
+        checkbox:SetHeight(16)
+        checkbox:SetScript('OnClick', function()
+            if this:GetChecked() then
+                PlaySound('igMainMenuOptionCheckBoxOn')
+            else
+                PlaySound('igMainMenuOptionCheckBoxOff')
+            end
+        end)
+        local label = gui.label(checkbox, gui.font_size.small)
+        label:SetPoint('RIGHT', checkbox, 'LEFT', -4, 0)
+        label:SetText('Rev')
+        label:SetTextColor(aux.color.label.enabled())
+        checkbox.label = label
+        reverse_checkbox = checkbox
+    end
+    do
+        -- Set initial search_box anchoring (will be updated by update_real_time)
+        search_box:SetPoint('LEFT', last_page_input, 'RIGHT', gui.is_blizzard() and 8 or 4, 0)
+        search_box:SetPoint('RIGHT', reverse_checkbox, 'LEFT', -30, 0)
     end
     do
         gui.horizontal_line(frame, -40)

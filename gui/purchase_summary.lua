@@ -230,8 +230,12 @@ function M.add_purchase(name, texture, quantity, cost, item_id)
 			purchase_summaries[name].total_vendor_value = purchase_summaries[name].total_vendor_value + vendor_value
 		end
 		
-		-- Track for craft-to-vendor system
-		if craft_vendor and craft_vendor.add_to_session then
+		-- Track for craft-to-vendor system - check if material is for a recipe
+		if craft_vendor and craft_vendor.material_to_recipes and craft_vendor.material_to_recipes[item_id] then
+			-- This is a craft material! Use on_material_bought for notifications
+			craft_vendor.on_material_bought(item_id, name, qty, item_cost)
+		elseif craft_vendor and craft_vendor.add_to_session then
+			-- Not a craft material, just track normally
 			craft_vendor.add_to_session(item_id, name, qty, item_cost)
 		end
 	end
