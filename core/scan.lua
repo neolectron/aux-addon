@@ -153,10 +153,16 @@ function scan_page(i)
 		history.process_auction(auction_info, pages)
 		
 		if (get_state().params.auto_buy_validator or pass)(auction_info) and auction_info.buyout_price >0 and auction_info.owner ~= UnitName("player") then
+			-- Play alert sound for auto-buy deal found
+			PlaySound("LEVELUP")
+			aux.print(aux.color.green("AUTO-BUY: ") .. (auction_info.name or "item") .. " for " .. aux.money.to_string(auction_info.buyout_price))
 			local send_signal, signal_received = aux.signal()
 			aux.when(signal_received, scan_page, i)
 			return aux.place_bid(auction_info.query_type, auction_info.index, auction_info.buyout_price, send_signal)
 		elseif (get_state().params.auto_bid_validator or pass)(auction_info) and auction_info.owner ~= UnitName("player") and auction_info.high_bidder == nil then
+			-- Play alert sound for auto-bid deal found
+			PlaySound("igQuestListOpen")
+			aux.print(aux.color.blue("AUTO-BID: ") .. (auction_info.name or "item") .. " for " .. aux.money.to_string(auction_info.bid_price))
 			local send_signal, signal_received = aux.signal()
 			aux.when(signal_received, scan_page, i)
 			return aux.place_bid(auction_info.query_type, auction_info.index, auction_info.bid_price, send_signal)

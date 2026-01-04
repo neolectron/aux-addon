@@ -87,6 +87,17 @@ function M.extend_tooltip(tooltip, link, quantity)
         if price ~= 0 then
             tooltip:AddLine('Vendor: ' .. (price and money.to_string2(price * quantity) or UNKNOWN), aux.color.tooltip.merchant())
         end
+        -- Show vendor profit potential compared to market value
+        if price and price > 0 then
+            local item_key = (item_id or 0) .. ':' .. (suffix_id or 0)
+            local market_val = history.market_value(item_key) or history.value(item_key)
+            if market_val and market_val > 0 then
+                local profit_per_item = price - market_val
+                if profit_per_item > 0 then
+                    tooltip:AddLine('Vendor Profit: +' .. money.to_string2(profit_per_item * quantity) .. '/item', 0, 1, 0) -- green
+                end
+            end
+        end
     end
     local auctionable = not item_info or info.auctionable(T.temp-info.tooltip('link', item_info.itemstring), item_info.quality)
     local item_key = (item_id or 0) .. ':' .. (suffix_id or 0)
