@@ -22,6 +22,7 @@ core\cache.lua
 util\info.lua
 core\history.lua
 core\disenchant.lua
+core\craft_vendor.lua
 util\filter.lua
 util\completion.lua
 core\slash.lua

@@ -5,6 +5,7 @@ local aux = require 'aux'
 local gui = require 'aux.gui'
 local money = require 'aux.util.money'
 local info = require 'aux.util.info'
+local craft_vendor = require 'aux.core.craft_vendor'
 
 -- Purchase summary data storage (session only)
 local purchase_summaries = {}
@@ -228,11 +229,19 @@ function M.add_purchase(name, texture, quantity, cost, item_id)
 			vendor_value = vendor_price * qty
 			purchase_summaries[name].total_vendor_value = purchase_summaries[name].total_vendor_value + vendor_value
 		end
+		
+		-- Track for craft-to-vendor system
+		if craft_vendor and craft_vendor.add_to_session then
+			craft_vendor.add_to_session(item_id, name, qty, item_cost)
+		end
 	end
 	
 	-- Save to persistent storage (including per-item stats)
 	save_profit(item_cost, vendor_value, qty, item_id, name)
 end
+
+local MAX_VISIBLE_ROWS = 10
+local ROW_HEIGHT = 14
 
 function create_purchase_summary_frame()
 	if purchase_summary_frame then return purchase_summary_frame end
@@ -324,8 +333,33 @@ function create_purchase_summary_frame()
 	header_profit:SetTextColor(0, 1, 0)
 	purchase_summary_frame.header_profit = header_profit
 
+	-- Create scroll frame for item rows
+	local scroll_frame = CreateFrame('ScrollFrame', 'AuxPurchaseSummaryScroll', purchase_summary_frame)
+	scroll_frame:SetPoint('TOPLEFT', header_item, 'BOTTOMLEFT', 0, -2)
+	scroll_frame:SetPoint('RIGHT', purchase_summary_frame, 'RIGHT', -8, 0)
+	scroll_frame:SetHeight(MAX_VISIBLE_ROWS * ROW_HEIGHT)
+	scroll_frame:EnableMouseWheel(true)
+	scroll_frame:SetScript('OnMouseWheel', function()
+		local scroll_child = this:GetScrollChild()
+		if not scroll_child then return end
+		local current = this:GetVerticalScroll()
+		local max_scroll = math.max(0, scroll_child:GetHeight() - this:GetHeight())
+		local new_scroll = current - (arg1 * ROW_HEIGHT * 2)  -- Scroll 2 rows at a time
+		new_scroll = math.max(0, math.min(new_scroll, max_scroll))
+		this:SetVerticalScroll(new_scroll)
+	end)
+	purchase_summary_frame.scroll_frame = scroll_frame
+
+	-- Create scroll child (content frame)
+	local scroll_child = CreateFrame('Frame', nil, scroll_frame)
+	scroll_child:SetWidth(360)
+	scroll_child:SetHeight(1)  -- Will be resized dynamically
+	scroll_frame:SetScrollChild(scroll_child)
+	purchase_summary_frame.scroll_child = scroll_child
+
 	-- Storage for row frames
 	purchase_summary_frame.rows = {}
+	purchase_summary_frame.scroll_offset = 0
 	return purchase_summary_frame
 end
 
@@ -410,15 +444,18 @@ function M.update_display()
 		row:Hide()
 	end
 
+	-- Get scroll child for row placement
+	local scroll_child = frame.scroll_child
+
 	-- Create rows for each item
 	local row_count = 0
 	for item_name, summary in purchase_summaries do
 		row_count = row_count + 1
 
-		-- Create new row frame if needed
+		-- Create new row frame if needed (parent is scroll_child now)
 		if not frame.rows[row_count] then
-			local row = CreateFrame('Frame', nil, frame)
-			row:SetHeight(14)
+			local row = CreateFrame('Frame', nil, scroll_child)
+			row:SetHeight(ROW_HEIGHT)
 			row:SetWidth(360)
 
 			-- Item name column
@@ -457,12 +494,9 @@ function M.update_display()
 
 		local row = frame.rows[row_count]
 
-		-- Position the row relative to headers or previous row
-		if row_count == 1 then
-			row:SetPoint('TOPLEFT', frame.header_item, 'BOTTOMLEFT', 0, -2)
-		else
-			row:SetPoint('TOPLEFT', frame.rows[row_count - 1], 'BOTTOMLEFT', 0, 0)
-		end
+		-- Position the row relative to scroll_child top
+		row:ClearAllPoints()
+		row:SetPoint('TOPLEFT', scroll_child, 'TOPLEFT', 0, -((row_count - 1) * ROW_HEIGHT))
 
 		-- Set the text content
 		row.item_text:SetText(item_name)
@@ -505,8 +539,20 @@ function M.update_display()
 		row:Show()
 	end
 
-	-- Resize frame to fit content
-	local estimated_height = 44 + (row_count * 14)
+	-- Update scroll child height to fit all rows
+	local total_content_height = row_count * ROW_HEIGHT
+	frame.scroll_child:SetHeight(math.max(1, total_content_height))
+
+	-- Resize scroll frame to show max rows or less
+	local visible_rows = math.min(row_count, MAX_VISIBLE_ROWS)
+	local scroll_height = visible_rows * ROW_HEIGHT
+	frame.scroll_frame:SetHeight(scroll_height)
+
+	-- Reset scroll position when content changes
+	frame.scroll_frame:SetVerticalScroll(0)
+
+	-- Resize main frame to fit content (headers ~44px + scroll area)
+	local estimated_height = 44 + scroll_height
 	frame:SetHeight(math.max(60, estimated_height))
 
 	frame:Show()

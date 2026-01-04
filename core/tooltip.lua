@@ -7,6 +7,7 @@ local money =  require 'aux.util.money'
 local disenchant = require 'aux.core.disenchant'
 local history = require 'aux.core.history'
 local gui = require 'aux.gui'
+local craft_vendor = require 'aux.core.craft_vendor'
 
 local UNKNOWN = GRAY_FONT_COLOR_CODE .. '?' .. FONT_COLOR_CODE_CLOSE
 
@@ -96,6 +97,17 @@ function M.extend_tooltip(tooltip, link, quantity)
                 if profit_per_item > 0 then
                     tooltip:AddLine('Vendor Profit: +' .. money.to_string2(profit_per_item * quantity) .. '/item', 0, 1, 0) -- green
                 end
+            end
+        end
+    end
+    -- Show craft-to-vendor info if this is a crafting material
+    if craft_vendor and craft_vendor.material_to_recipes and item_id then
+        local recipe_list = craft_vendor.material_to_recipes[item_id]
+        if recipe_list and getn(recipe_list) > 0 then
+            -- Show max buy price for any profit (guaranteed vendor sale)
+            local max_price, recipe_name = craft_vendor.get_max_mat_price(item_id, 0)
+            if max_price and max_price > 0 then
+                tooltip:AddLine('Craft Max Buy: ' .. money.to_string2(max_price) .. ' → ' .. recipe_name, 1, 0.82, 0) -- Gold color
             end
         end
     end

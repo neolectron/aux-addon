@@ -5,6 +5,7 @@ local aux = require 'aux'
 local info = require 'aux.util.info'
 local post = require 'aux.tabs.post'
 local purchase_summary = require 'aux.util.purchase_summary'
+local craft_vendor = require 'aux.core.craft_vendor'
 
 function status(enabled)
 	return (enabled and aux.color.green'on' or aux.color.red'off')
@@ -122,6 +123,50 @@ function SlashCmdList.AUX(command)
 			end
 			aux.print(aux.color.gold('WoWAuctions: ') .. url)
 		end
+	-- Craft-to-vendor commands
+	elseif arguments[1] == 'craft' then
+		if arguments[2] == 'status' or arguments[2] == nil then
+			craft_vendor.print_session()
+		elseif arguments[2] == 'recipes' then
+			craft_vendor.print_recipes()
+		elseif arguments[2] == 'reset' or arguments[2] == 'clear' then
+			craft_vendor.reset_session()
+			aux.print('Craft session cleared.')
+		elseif arguments[2] == 'maxprice' then
+			-- Show max prices for materials (default: any profit)
+			local margin = tonumber(arguments[3]) or 0
+			margin = margin / 100
+			local margin_text = margin == 0 and 'any profit' or (margin * 100) .. '% margin'
+			aux.print(aux.color.gold('--- Max Material Prices (' .. margin_text .. ') ---'))
+			local shown = {}
+			for mat_id, recipe_list in pairs(craft_vendor.material_to_recipes) do
+				if not shown[mat_id] then
+					shown[mat_id] = true
+					local max_price, recipe_name = craft_vendor.get_max_mat_price(mat_id, margin)
+					if max_price and max_price > 0 then
+						local mat_name = recipe_list[1].recipe.materials[1].name
+						for _, mat in ipairs(recipe_list[1].recipe.materials) do
+							if mat.item_id == mat_id then
+								mat_name = mat.name
+								break
+							end
+						end
+						local money = require 'aux.util.money'
+						aux.print(format('%s: max %s (for %s)',
+							mat_name,
+							money.to_string(max_price, nil, true),
+							recipe_name
+						))
+					end
+				end
+			end
+		else
+			aux.print('Craft commands:')
+			aux.print('- craft status - Show collected materials')
+			aux.print('- craft recipes - List all recipes')
+			aux.print('- craft maxprice [margin%] - Show max prices for materials')
+			aux.print('- craft reset - Clear session')
+		end
 	else
 		aux.print('Usage:')
 		aux.print('- scale [' .. aux.color.blue(aux.account_data.scale) .. ']')
@@ -148,5 +193,6 @@ function SlashCmdList.AUX(command)
 		aux.print('- reset profit')
 		aux.print('- top [N] - Show top N profitable items')
 		aux.print('- wowauction <item> - Get WoWAuctions.net link')
+		aux.print('- craft <status|recipes|maxprice|reset>')
     end
 end

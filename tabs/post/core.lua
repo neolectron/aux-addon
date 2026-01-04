@@ -114,29 +114,67 @@ function update_auction_listing(listing, records, reference)
 	if selected_item then
 		local historical_value = history.value(selected_item.key)
 		local stack_size = stack_size_slider:GetValue()
+		
+		-- Find lowest competitor price for cancel profit calculation
+		local lowest_competitor_price = nil
+		if listing == 'buyout' then
+			for _, record in records[selected_item.key] or T.empty do
+				if not record.own and record.unit_price > 0 then
+					if not lowest_competitor_price or record.unit_price < lowest_competitor_price then
+						lowest_competitor_price = record.unit_price
+					end
+				end
+			end
+		end
+		
 		for _, record in records[selected_item.key] or T.empty do
 			local price_color = undercut(record, stack_size_slider:GetValue(), listing == 'bid') < reference and aux.color.red
 			local price = record.unit_price * (listing == 'bid' and record.stack_size / stack_size_slider:GetValue() or 1)
-			tinsert(rows, T.map(
-				'cols', T.list(
+			
+			-- Calculate cancel profit for buyout listing
+			local cancel_col = T.map('value', '---')
+			if listing == 'buyout' then
+				local cancel_profit = get_cancel_profit(record, lowest_competitor_price, selected_item.unit_vendor_price, selected_item.max_stack)
+				if cancel_profit then
+					if cancel_profit >= 0 then
+						cancel_col = T.map('value', aux.color.green('+' .. money.to_string(cancel_profit, true, true)))
+					else
+						cancel_col = T.map('value', aux.color.red(money.to_string(cancel_profit, true, true)))
+					end
+				end
+			end
+			
+			local cols = T.list(
 				T.map('value', record.own and aux.color.green(record.count) or record.count),
 				T.map('value', al.time_left(record.duration)),
 				T.map('value', record.stack_size == stack_size and aux.color.green(record.stack_size) or record.stack_size),
 				T.map('value', money.to_string(price, true, nil, price_color)),
 				T.map('value', historical_value and gui.percentage_historical(aux.round(price / historical_value * 100)) or '---')
-			),
+			)
+			
+			-- Add cancel column only for buyout listing
+			if listing == 'buyout' then
+				tinsert(cols, cancel_col)
+			end
+			
+			tinsert(rows, T.map(
+				'cols', cols,
 				'record', record
 			))
 		end
 		if historical_value then
-			tinsert(rows, T.map(
-				'cols', T.list(
+			local hist_cols = T.list(
 				T.map('value', '---'),
 				T.map('value', '---'),
 				T.map('value', '---'),
 				T.map('value', money.to_string(historical_value, true, nil, aux.color.green)),
 				T.map('value', historical_value and gui.percentage_historical(100) or '---')
-			),
+			)
+			if listing == 'buyout' then
+				tinsert(hist_cols, T.map('value', '---'))
+			end
+			tinsert(rows, T.map(
+				'cols', hist_cols,
 				'record', T.map('historical_value', true, 'stack_size', stack_size, 'unit_price', historical_value, 'own', true)
 			))
 		end
@@ -303,20 +341,36 @@ end
 function validate_parameters()
     if not selected_item then
         post_button:Disable()
+        below_vendor_warning:Hide()
         return
     end
     if get_unit_buyout_price() > 0 and get_unit_start_price() > get_unit_buyout_price() then
         post_button:Disable()
+        below_vendor_warning:Hide()
         return
     end
     if get_unit_start_price() == 0 then
         post_button:Enable()
+        below_vendor_warning:Hide()
         return
     end
     if stack_count_slider:GetValue() == 0 then
         post_button:Disable()
+        below_vendor_warning:Hide()
         return
     end
+    
+    -- Check if selling below vendor price (accounting for 5% AH cut)
+    local unit_vendor = selected_item.unit_vendor_price
+    local unit_buyout = get_unit_buyout_price()
+    local after_fees = unit_buyout * 0.95  -- What you actually get after 5% AH fee
+    
+    if unit_vendor and unit_vendor > 0 and unit_buyout > 0 and after_fees < unit_vendor then
+        below_vendor_warning:Show()
+    else
+        below_vendor_warning:Hide()
+    end
+    
     post_button:Enable()
 end
 
@@ -337,6 +391,7 @@ function update_item_configuration()
         duration_dropdown:Hide()
         hide_checkbox:Hide()
         vendor_price_label:Hide()
+        below_vendor_warning:Hide()
     else
 		unit_start_price_input:Show()
         unit_buyout_price_input:Show()
@@ -371,15 +426,25 @@ function update_item_configuration()
             deposit:SetText('Deposit: ' .. money.to_string(amount, nil, nil, aux.color.text.enabled))
         end
 
-        --vendor price
+        --vendor price (with AH fee consideration)
         do
             local unit_vendor_price = selected_item.unit_vendor_price
+            local unit_buyout = get_unit_buyout_price()
+            local after_fees = unit_buyout * 0.95  -- After 5% AH fee
+            local is_loss = unit_vendor_price and unit_vendor_price > 0 and unit_buyout > 0 and after_fees < unit_vendor_price
+            
             if not unit_vendor_price then
                 vendor_price_label:SetText("Unit Vendor Price: N/A")
+                vendor_price_label:SetTextColor(aux.color.label.enabled())
             elseif unit_vendor_price == 0 then
                 vendor_price_label:SetText("Unit Vendor Price: None")
+                vendor_price_label:SetTextColor(aux.color.label.enabled())
+            elseif is_loss then
+                vendor_price_label:SetText("Unit Vendor Price: " .. money.to_string(unit_vendor_price, nil, nil, aux.color.text.enabled) .. " (LOSS!)")
+                vendor_price_label:SetTextColor(1, 0.2, 0.2) -- Red
             else
                 vendor_price_label:SetText("Unit Vendor Price: " .. money.to_string(unit_vendor_price, nil, nil, aux.color.text.enabled))
+                vendor_price_label:SetTextColor(aux.color.label.enabled())
             end
         end
 
@@ -395,6 +460,35 @@ function undercut(record, stack_size, stack)
         end
     end
     return price / stack_size
+end
+
+-- Calculate deposit for a stack (always assumes 72h for simplicity)
+function calculate_deposit(unit_vendor_price, stack_size, max_stack)
+    if not unit_vendor_price or unit_vendor_price == 0 then return 0 end
+    local deposit_factor = 0.025
+    local duration_factor = 1440 / 120  -- 72h = 1440, always assume 72h
+    return floor(unit_vendor_price * stack_size * duration_factor * (1 + (max_stack - stack_size) * 0.05) * deposit_factor)
+end
+
+-- Calculate profit/loss from canceling your auction to undercut competitor
+-- Returns: profit (positive = worth canceling, negative = not worth it), or nil if N/A
+function get_cancel_profit(your_record, lowest_competitor_price, unit_vendor_price, max_stack)
+    if not your_record.own then return nil end  -- Not your auction
+    if not lowest_competitor_price then return nil end  -- No competitor to undercut
+    if lowest_competitor_price >= your_record.unit_price then return nil end  -- You're already lowest
+    
+    local new_price = lowest_competitor_price - 1  -- Undercut by 1c
+    if new_price <= 0 then return nil end
+    
+    local stack_size = your_record.stack_size
+    local new_deposit = calculate_deposit(unit_vendor_price, stack_size, max_stack)
+    
+    -- What you get if you cancel and relist at undercut price
+    local new_revenue = new_price * stack_size * 0.95  -- After 5% AH cut
+    
+    -- Profit = new revenue - new deposit cost
+    -- (Original deposit is sunk cost - lost whether you cancel or auction expires)
+    return floor(new_revenue - new_deposit)
 end
 
 function quantity_update(maximize_count)
