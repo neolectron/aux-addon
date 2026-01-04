@@ -6,6 +6,7 @@ local info = require 'aux.util.info'
 local post = require 'aux.tabs.post'
 local purchase_summary = require 'aux.util.purchase_summary'
 local craft_vendor = require 'aux.core.craft_vendor'
+local search_cache = require 'aux.core.search_cache'
 
 function status(enabled)
 	return (enabled and aux.color.green'on' or aux.color.red'off')
@@ -214,6 +215,25 @@ function SlashCmdList.AUX(command)
 			aux.print('- craft profitable - Show profitable crafts (uses market data)')
 			aux.print('- craft reset - Clear session')
 		end
+	-- Search cache commands
+	elseif arguments[1] == 'cache' then
+		if arguments[2] == 'clear' or arguments[2] == 'reset' then
+			search_cache.clear()
+		elseif arguments[2] == 'debug' then
+			search_cache.debug()
+		else
+			-- Show cache status
+			local stats = search_cache.stats()
+			aux.print(aux.color.gold('=== Search Cache Stats ==='))
+			aux.print(format('Cached searches: %d', stats.entries))
+			aux.print(format('Total auctions cached: %d', stats.total_auctions))
+			if stats.oldest_age > 0 then
+				local age_min = math.floor(stats.oldest_age / 60)
+				aux.print(format('Oldest entry: %dm ago', age_min))
+			end
+			aux.print(' ')
+			aux.print('Commands: cache clear | cache debug')
+		end
 	else
 		aux.print('Usage:')
 		aux.print('- scale [' .. aux.color.blue(aux.account_data.scale) .. ']')
@@ -238,6 +258,7 @@ function SlashCmdList.AUX(command)
 		aux.print('- show hidden [' .. status(aux.account_data.showhidden) .. ']')
 		aux.print('- purchase summary [' .. status(aux.account_data.purchase_summary) .. ']')
 		aux.print('- profit <status|reset|top [N]>')
+		aux.print('- cache <status|clear|debug>')
 		aux.print('- wowauction <item> - Get WoWAuctions.net link')
 		aux.print('- craft <status|ready|missing|safe|recipes|profitable|reset>')
     end

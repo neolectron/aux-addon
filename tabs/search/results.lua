@@ -6,6 +6,7 @@ local info = require 'aux.util.info'
 local filter_util = require 'aux.util.filter'
 local scan_util = require 'aux.util.scan'
 local scan = require 'aux.core.scan'
+local search_cache = require 'aux.core.search_cache'
 local gui = require 'aux.gui'
 
 search_scan_id = 0
@@ -381,6 +382,15 @@ function start_search(queries, continuation, reverse)
 
 			search.active = false
 			update_start_stop()
+			
+			-- Store results in search cache for stale-while-revalidate
+			if search.filter_string and getn(search.records) > 0 then
+				if search_cache and search_cache.store then
+					search_cache.store(search.filter_string, search.records)
+				else
+					aux.print('[SearchCache] WARNING: cache module not loaded')
+				end
+			end
 			
 			-- Clear continuation and save state when complete
 			search.continuation = nil
