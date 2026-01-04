@@ -349,7 +349,7 @@ function start_search(queries, continuation, reverse)
 			end
 		end,
 		on_page_loaded = function(page_progress, total_scan_pages)
-			current_page = page_progress
+			current_page = page_progress + (start_page - 1)
 			total_scan_pages = total_scan_pages + (start_page - 1)
 			total_scan_pages = max(total_scan_pages, 1)
 			current_page = min(current_page, total_scan_pages)

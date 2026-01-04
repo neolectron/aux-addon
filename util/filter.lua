@@ -364,7 +364,7 @@ M.filters = {
 				if not mat_info then return false end
 				
 				-- Check ratio - do we need more of this material?
-				local session = craft_vendor.craft_session
+				local session = craft_vendor.get_session()
 				local have_this = session[auction_record.item_id] and session[auction_record.item_id].quantity or 0
 				
 				-- Find the limiting material (lowest ratio of have/need)

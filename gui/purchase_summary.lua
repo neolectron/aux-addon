@@ -244,104 +244,122 @@ function M.add_purchase(name, texture, quantity, cost, item_id)
 	save_profit(item_cost, vendor_value, qty, item_id, name)
 end
 
-local MAX_VISIBLE_ROWS = 10
 local ROW_HEIGHT = 14
+local PANEL_WIDTH = 340
 
 function create_purchase_summary_frame()
 	if purchase_summary_frame then return purchase_summary_frame end
+	
+	-- Safety check: aux.frame must exist
+	if not aux.frame then return nil end
 
+	-- Parent to UIParent so it's not hidden when aux.frame is hidden
+	-- Anchor to RIGHT side of aux.frame as a side panel
 	purchase_summary_frame = CreateFrame('Frame', 'AuxPurchaseSummary', UIParent)
-	purchase_summary_frame:SetWidth(420)
-	purchase_summary_frame:SetHeight(100)
-	-- Position differently based on theme
-	local y_offset = gui.is_blizzard() and 9 or -2
-	purchase_summary_frame:SetPoint('BOTTOM', aux.frame, 'TOP', 0, y_offset)
-	purchase_summary_frame:SetFrameLevel(aux.frame:GetFrameLevel())
+	purchase_summary_frame:SetWidth(PANEL_WIDTH)
+	purchase_summary_frame:SetHeight(300)  -- Will be dynamically resized to match aux.frame
+	-- Position to the right of aux frame with small gap
+	purchase_summary_frame:SetPoint('TOPLEFT', aux.frame, 'TOPRIGHT', 4, 0)
+	purchase_summary_frame:SetPoint('BOTTOMLEFT', aux.frame, 'BOTTOMRIGHT', 4, 0)
+	purchase_summary_frame:SetFrameStrata('HIGH')
+	purchase_summary_frame:SetFrameLevel(aux.frame:GetFrameLevel() + 5)
 
 	-- Use aux's standard panel styling
 	gui.set_panel_style(purchase_summary_frame, 2, 2, 2, 2)
 	purchase_summary_frame:Hide()
 
-	-- Row 1: Session profit + g/h
-	local title = purchase_summary_frame:CreateFontString(nil, 'OVERLAY', 'GameFontHighlight')
+	-- Title
+	local title = purchase_summary_frame:CreateFontString(nil, 'OVERLAY', 'GameFontNormalLarge')
 	title:SetPoint('TOPLEFT', 8, -8)
-	title:SetText('Session')
+	title:SetText('Purchases')
 	title:SetTextColor(aux.color.label.enabled())
 	purchase_summary_frame.title = title
 
-	local session_profit_text = purchase_summary_frame:CreateFontString(nil, 'OVERLAY', 'GameFontHighlight')
-	session_profit_text:SetPoint('LEFT', title, 'RIGHT', 5, 0)
-	session_profit_text:SetWidth(90)
-	session_profit_text:SetJustifyH('LEFT')
-	session_profit_text:SetTextColor(0, 1, 0) -- Green
-	purchase_summary_frame.session_profit_text = session_profit_text
-
+	-- Session g/h (line 1)
 	local session_gph_text = purchase_summary_frame:CreateFontString(nil, 'OVERLAY', 'GameFontNormalSmall')
-	session_gph_text:SetPoint('LEFT', session_profit_text, 'RIGHT', 5, 0)
-	session_gph_text:SetWidth(60)
+	session_gph_text:SetPoint('TOPLEFT', title, 'BOTTOMLEFT', 0, -8)
 	session_gph_text:SetJustifyH('LEFT')
 	session_gph_text:SetTextColor(0.7, 0.7, 0.7) -- Gray
 	purchase_summary_frame.session_gph_text = session_gph_text
 
-	-- Row 1: All-time profit + g/h
-	local alltime_label = purchase_summary_frame:CreateFontString(nil, 'OVERLAY', 'GameFontHighlight')
-	alltime_label:SetPoint('TOPLEFT', 230, -8)
-	alltime_label:SetText('All-Time')
-	alltime_label:SetTextColor(aux.color.label.enabled())
-	purchase_summary_frame.alltime_label = alltime_label
+	-- Session profit (line 2)
+	local session_label = purchase_summary_frame:CreateFontString(nil, 'OVERLAY', 'GameFontNormalSmall')
+	session_label:SetPoint('TOPLEFT', session_gph_text, 'BOTTOMLEFT', 0, -2)
+	session_label:SetText('Session:')
+	session_label:SetTextColor(aux.color.label.enabled())
+	purchase_summary_frame.session_label = session_label
 
-	local alltime_profit_text = purchase_summary_frame:CreateFontString(nil, 'OVERLAY', 'GameFontHighlight')
-	alltime_profit_text:SetPoint('LEFT', alltime_label, 'RIGHT', 5, 0)
-	alltime_profit_text:SetWidth(90)
-	alltime_profit_text:SetJustifyH('LEFT')
-	alltime_profit_text:SetTextColor(1, 0.82, 0) -- Gold
-	purchase_summary_frame.alltime_profit_text = alltime_profit_text
+	local session_profit_text = purchase_summary_frame:CreateFontString(nil, 'OVERLAY', 'GameFontNormalSmall')
+	session_profit_text:SetPoint('LEFT', session_label, 'RIGHT', 5, 0)
+	session_profit_text:SetJustifyH('LEFT')
+	session_profit_text:SetTextColor(0, 1, 0) -- Green
+	purchase_summary_frame.session_profit_text = session_profit_text
 
+	-- All-time g/h (line 3)
 	local alltime_gph_text = purchase_summary_frame:CreateFontString(nil, 'OVERLAY', 'GameFontNormalSmall')
-	alltime_gph_text:SetPoint('LEFT', alltime_profit_text, 'RIGHT', 5, 0)
-	alltime_gph_text:SetWidth(60)
+	alltime_gph_text:SetPoint('TOPLEFT', session_label, 'BOTTOMLEFT', 0, -6)
 	alltime_gph_text:SetJustifyH('LEFT')
 	alltime_gph_text:SetTextColor(0.7, 0.7, 0.7) -- Gray
 	purchase_summary_frame.alltime_gph_text = alltime_gph_text
 
+	-- All-time profit (line 4)
+	local alltime_label = purchase_summary_frame:CreateFontString(nil, 'OVERLAY', 'GameFontNormalSmall')
+	alltime_label:SetPoint('TOPLEFT', alltime_gph_text, 'BOTTOMLEFT', 0, -2)
+	alltime_label:SetText('All-Time:')
+	alltime_label:SetTextColor(aux.color.label.enabled())
+	purchase_summary_frame.alltime_label = alltime_label
+
+	local alltime_profit_text = purchase_summary_frame:CreateFontString(nil, 'OVERLAY', 'GameFontNormalSmall')
+	alltime_profit_text:SetPoint('LEFT', alltime_label, 'RIGHT', 5, 0)
+	alltime_profit_text:SetJustifyH('LEFT')
+	alltime_profit_text:SetTextColor(1, 0.82, 0) -- Gold
+	purchase_summary_frame.alltime_profit_text = alltime_profit_text
+
+	-- Separator line
+	local separator = purchase_summary_frame:CreateTexture(nil, 'ARTWORK')
+	separator:SetTexture(1, 1, 1, 0.3)
+	separator:SetHeight(1)
+	separator:SetPoint('TOPLEFT', alltime_label, 'BOTTOMLEFT', 0, -6)
+	separator:SetPoint('RIGHT', purchase_summary_frame, 'RIGHT', -8, 0)
+	purchase_summary_frame.separator = separator
+
 	-- Column headers
 	local header_item = purchase_summary_frame:CreateFontString(nil, 'OVERLAY', 'GameFontNormalSmall')
-	header_item:SetPoint('TOPLEFT', title, 'BOTTOMLEFT', 0, -4)
-	header_item:SetWidth(130)
+	header_item:SetPoint('TOPLEFT', separator, 'BOTTOMLEFT', 0, -4)
+	header_item:SetWidth(140)
 	header_item:SetJustifyH('LEFT')
 	header_item:SetText('Item')
 	header_item:SetTextColor(aux.color.label.enabled())
 	purchase_summary_frame.header_item = header_item
 
 	local header_count = purchase_summary_frame:CreateFontString(nil, 'OVERLAY', 'GameFontNormalSmall')
-	header_count:SetPoint('LEFT', header_item, 'RIGHT', 5, 0)
-	header_count:SetWidth(35)
+	header_count:SetPoint('LEFT', header_item, 'RIGHT', 2, 0)
+	header_count:SetWidth(30)
 	header_count:SetJustifyH('RIGHT')
 	header_count:SetText('Qty')
 	header_count:SetTextColor(aux.color.label.enabled())
 	purchase_summary_frame.header_count = header_count
 
 	local header_cost = purchase_summary_frame:CreateFontString(nil, 'OVERLAY', 'GameFontNormalSmall')
-	header_cost:SetPoint('LEFT', header_count, 'RIGHT', 5, 0)
+	header_cost:SetPoint('LEFT', header_count, 'RIGHT', 2, 0)
 	header_cost:SetWidth(70)
 	header_cost:SetJustifyH('RIGHT')
-	header_cost:SetText('Spent')
+	header_cost:SetText('Price')
 	header_cost:SetTextColor(aux.color.label.enabled())
 	purchase_summary_frame.header_cost = header_cost
 
 	local header_profit = purchase_summary_frame:CreateFontString(nil, 'OVERLAY', 'GameFontNormalSmall')
-	header_profit:SetPoint('LEFT', header_cost, 'RIGHT', 5, 0)
+	header_profit:SetPoint('LEFT', header_cost, 'RIGHT', 2, 0)
 	header_profit:SetWidth(70)
 	header_profit:SetJustifyH('RIGHT')
 	header_profit:SetText('Profit')
 	header_profit:SetTextColor(0, 1, 0)
 	purchase_summary_frame.header_profit = header_profit
 
-	-- Create scroll frame for item rows
+	-- Create scroll frame for item rows (takes remaining vertical space)
 	local scroll_frame = CreateFrame('ScrollFrame', 'AuxPurchaseSummaryScroll', purchase_summary_frame)
 	scroll_frame:SetPoint('TOPLEFT', header_item, 'BOTTOMLEFT', 0, -2)
-	scroll_frame:SetPoint('RIGHT', purchase_summary_frame, 'RIGHT', -8, 0)
-	scroll_frame:SetHeight(MAX_VISIBLE_ROWS * ROW_HEIGHT)
+	scroll_frame:SetPoint('BOTTOMRIGHT', purchase_summary_frame, 'BOTTOMRIGHT', -8, 8)
 	scroll_frame:EnableMouseWheel(true)
 	scroll_frame:SetScript('OnMouseWheel', function()
 		local scroll_child = this:GetScrollChild()
@@ -356,7 +374,7 @@ function create_purchase_summary_frame()
 
 	-- Create scroll child (content frame)
 	local scroll_child = CreateFrame('Frame', nil, scroll_frame)
-	scroll_child:SetWidth(360)
+	scroll_child:SetWidth(PANEL_WIDTH - 16)
 	scroll_child:SetHeight(1)  -- Will be resized dynamically
 	scroll_frame:SetScrollChild(scroll_child)
 	purchase_summary_frame.scroll_child = scroll_child
@@ -369,9 +387,12 @@ end
 
 function M.update_display()
 	local frame = create_purchase_summary_frame()
+	
+	-- Frame couldn't be created (aux.frame doesn't exist yet)
+	if not frame then return end
 
 	-- Check if purchase summary is disabled
-	if not aux.account_data.purchase_summary then
+	if not aux.account_data or not aux.account_data.purchase_summary then
 		frame:Hide()
 		return
 	end
@@ -390,6 +411,12 @@ function M.update_display()
 	end
 	local session_profit = total_vendor - total_spent
 
+	-- Session gold/hour (shown above the session label)
+	local session_gph = get_session_gold_per_hour()
+	local session_gph_gold = math.floor(session_gph / 10000)
+	frame.session_gph_text:SetText('Session Rate: ' .. session_gph_gold .. 'g/h')
+	frame.session_gph_text:Show()
+
 	-- Update session profit display
 	if session_profit ~= 0 then
 		local profit_string = money.to_string(math.abs(session_profit), nil, true)
@@ -404,16 +431,6 @@ function M.update_display()
 		frame.session_profit_text:SetText('+0')
 	end
 	frame.session_profit_text:Show()
-
-	-- Session gold/hour
-	local session_gph = get_session_gold_per_hour()
-	if session_gph > 0 then
-		local gph_gold = math.floor(session_gph / 10000)
-		frame.session_gph_text:SetText('(' .. gph_gold .. 'g/h)')
-	else
-		frame.session_gph_text:SetText('')
-	end
-	frame.session_gph_text:Show()
 
 	-- Update all-time profit display
 	local alltime_spent, alltime_vendor = get_alltime_profit()
@@ -433,14 +450,10 @@ function M.update_display()
 	end
 	frame.alltime_profit_text:Show()
 
-	-- All-time gold/hour
+	-- All-time gold/hour (shown above the all-time label)
 	local alltime_gph = get_gold_per_hour()
-	if alltime_gph > 0 then
-		local gph_gold = math.floor(alltime_gph / 10000)
-		frame.alltime_gph_text:SetText('(' .. gph_gold .. 'g/h)')
-	else
-		frame.alltime_gph_text:SetText('')
-	end
+	local gph_gold = math.floor(alltime_gph / 10000)
+	frame.alltime_gph_text:SetText('All-Time Rate: ' .. gph_gold .. 'g/h')
 	frame.alltime_gph_text:Show()
 
 	-- Clear existing row frames
@@ -460,39 +473,59 @@ function M.update_display()
 		if not frame.rows[row_count] then
 			local row = CreateFrame('Frame', nil, scroll_child)
 			row:SetHeight(ROW_HEIGHT)
-			row:SetWidth(360)
+			row:SetWidth(PANEL_WIDTH - 16)
 
-			-- Item name column
-			local item_text = row:CreateFontString(nil, 'OVERLAY', 'GameFontNormal')
-			item_text:SetPoint('TOPLEFT', row, 'TOPLEFT', 0, 0)
-			item_text:SetWidth(130)
+			-- Item name column - use a Button for hover/click support
+			local item_button = CreateFrame('Button', nil, row)
+			item_button:SetPoint('TOPLEFT', row, 'TOPLEFT', 0, 0)
+			item_button:SetWidth(140)
+			item_button:SetHeight(ROW_HEIGHT)
+			
+			local item_text = item_button:CreateFontString(nil, 'OVERLAY', 'GameFontNormalSmall')
+			item_text:SetPoint('LEFT', item_button, 'LEFT', 0, 0)
+			item_text:SetWidth(140)
 			item_text:SetJustifyH('LEFT')
 			item_text:SetTextColor(aux.color.text.enabled())
+			item_button.text = item_text
+			
+			-- Hover handlers for item tooltip
+			item_button:SetScript('OnEnter', function()
+				local item_id = this:GetParent().item_id
+				if item_id then
+					GameTooltip:SetOwner(this, 'ANCHOR_RIGHT')
+					GameTooltip:SetHyperlink('item:' .. item_id)
+					GameTooltip:Show()
+				end
+			end)
+			item_button:SetScript('OnLeave', function()
+				GameTooltip:Hide()
+			end)
+			
+			row.item_button = item_button
 			row.item_text = item_text
 
 			-- Count column
-			local count_text = row:CreateFontString(nil, 'OVERLAY', 'GameFontNormal')
-			count_text:SetPoint('TOPLEFT', row, 'TOPLEFT', 135, 0)
-			count_text:SetWidth(35)
+			local count_text = row:CreateFontString(nil, 'OVERLAY', 'GameFontNormalSmall')
+			count_text:SetPoint('TOPLEFT', row, 'TOPLEFT', 142, 0)
+			count_text:SetWidth(30)
 			count_text:SetJustifyH('RIGHT')
 			count_text:SetTextColor(aux.color.text.enabled())
 			row.count_text = count_text
 
-			-- Cost column
-			local cost_text = row:CreateFontString(nil, 'OVERLAY', 'GameFontNormal')
-			cost_text:SetPoint('TOPLEFT', row, 'TOPLEFT', 175, 0)
+			-- Cost/Price column
+			local cost_text = row:CreateFontString(nil, 'OVERLAY', 'GameFontNormalSmall')
+			cost_text:SetPoint('TOPLEFT', row, 'TOPLEFT', 174, 0)
 			cost_text:SetWidth(70)
 			cost_text:SetJustifyH('RIGHT')
 			cost_text:SetTextColor(aux.color.text.enabled())
 			row.cost_text = cost_text
 
 			-- Profit column
-			local profit_text = row:CreateFontString(nil, 'OVERLAY', 'GameFontNormal')
-			profit_text:SetPoint('TOPLEFT', row, 'TOPLEFT', 250, 0)
+			local profit_text = row:CreateFontString(nil, 'OVERLAY', 'GameFontNormalSmall')
+			profit_text:SetPoint('TOPLEFT', row, 'TOPLEFT', 246, 0)
 			profit_text:SetWidth(70)
 			profit_text:SetJustifyH('RIGHT')
 			row.profit_text = profit_text
-
 			frame.rows[row_count] = row
 		end
 
@@ -502,11 +535,14 @@ function M.update_display()
 		row:ClearAllPoints()
 		row:SetPoint('TOPLEFT', scroll_child, 'TOPLEFT', 0, -((row_count - 1) * ROW_HEIGHT))
 
-		-- Set the text content
+		-- Store item_id on the row for tooltip
+		row.item_id = summary.item_id
+
+		-- Set item name (no truncation - let FontString clip naturally)
 		row.item_text:SetText(item_name)
 		row.count_text:SetText(summary.total_quantity .. 'x')
 
-		-- Drop copper when displaying gold amounts
+		-- Calculate and display cost/price for this item
 		local cost = summary.total_cost or 0
 		local cost_string
 		if cost >= 10000 then
@@ -547,19 +583,19 @@ function M.update_display()
 	local total_content_height = row_count * ROW_HEIGHT
 	frame.scroll_child:SetHeight(math.max(1, total_content_height))
 
-	-- Resize scroll frame to show max rows or less
-	local visible_rows = math.min(row_count, MAX_VISIBLE_ROWS)
-	local scroll_height = visible_rows * ROW_HEIGHT
-	frame.scroll_frame:SetHeight(scroll_height)
+	-- Reset scroll position when content changes significantly
+	if row_count <= 1 then
+		frame.scroll_frame:SetVerticalScroll(0)
+	end
 
-	-- Reset scroll position when content changes
-	frame.scroll_frame:SetVerticalScroll(0)
+	-- Ensure scroll components are visible
+	frame.scroll_frame:Show()
+	frame.scroll_child:Show()
 
-	-- Resize main frame to fit content (headers ~44px + scroll area)
-	local estimated_height = 44 + scroll_height
-	frame:SetHeight(math.max(60, estimated_height))
-
-	frame:Show()
+	-- Make sure frame is visible and properly positioned
+	if aux.frame and aux.frame:IsShown() then
+		frame:Show()
+	end
 end
 
 function M.hide()

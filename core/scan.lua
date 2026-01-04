@@ -179,18 +179,26 @@ function scan_page(i)
 		history.process_auction(auction_info, pages)
 		
 		if (get_state().params.auto_buy_validator or pass)(auction_info) and auction_info.buyout_price >0 and auction_info.owner ~= UnitName("player") then
-			-- Play alert sound for auto-buy deal found
-			PlaySound("LEVELUP")
-			aux.print(aux.color.green("AUTO-BUY: ") .. (auction_info.name or "item") .. " for " .. money.to_string(auction_info.buyout_price, true))
 			-- Instant buy: place bid and continue scanning immediately (don't wait)
-			aux.place_bid(auction_info.query_type, auction_info.index, auction_info.buyout_price, pass, true)
-			-- Continue to next auction without waiting
+			local success, reason = aux.place_bid(auction_info.query_type, auction_info.index, auction_info.buyout_price, pass, true)
+			if success then
+				-- Play alert sound for auto-buy deal found
+				PlaySound("LEVELUP")
+				aux.print(aux.color.green("AUTO-BUY: ") .. (auction_info.name or "item") .. " for " .. money.to_string(auction_info.buyout_price, true))
+			elseif reason == 'gold' then
+				aux.print(aux.color.red("AUTO-BUY SKIPPED (not enough gold): ") .. (auction_info.name or "item"))
+			end
+			-- Continue to next auction without waiting (even if skipped)
 		elseif (get_state().params.auto_bid_validator or pass)(auction_info) and auction_info.owner ~= UnitName("player") and auction_info.high_bidder == nil then
-			-- Play alert sound for auto-bid deal found
-			PlaySound("igQuestListOpen")
-			aux.print(aux.color.blue("AUTO-BID: ") .. (auction_info.name or "item") .. " for " .. money.to_string(auction_info.bid_price, true))
 			-- Instant bid: place bid and continue scanning immediately (don't wait)
-			aux.place_bid(auction_info.query_type, auction_info.index, auction_info.bid_price, pass, false)
+			local success, reason = aux.place_bid(auction_info.query_type, auction_info.index, auction_info.bid_price, pass, false)
+			if success then
+				-- Play alert sound for auto-bid deal found
+				PlaySound("igQuestListOpen")
+				aux.print(aux.color.blue("AUTO-BID: ") .. (auction_info.name or "item") .. " for " .. money.to_string(auction_info.bid_price, true))
+			elseif reason == 'gold' then
+				aux.print(aux.color.red("AUTO-BID SKIPPED (not enough gold): ") .. (auction_info.name or "item"))
+			end
 		elseif not get_query().validator or get_query().validator(auction_info) then
 			do (get_state().params.on_auction or pass)(auction_info) end
 		end

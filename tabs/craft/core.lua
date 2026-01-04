@@ -226,9 +226,9 @@ function update_material_listing()
     -- Update profit display with vendor and auction profit
     if eval.all_found then
         local profit_color = eval.profit > 0 and aux.color.green or aux.color.red
-        profit_label:SetText('Profit: ' .. profit_color(money.to_string(eval.profit, nil, true)))
-        cost_label:SetText('Cost: ' .. money.to_string(eval.total_cost, nil, true))
-        vendor_label:SetText('Vendor: ' .. money.to_string(eval.vendor_value, nil, true))
+        cost_label:SetText('Mats Cost: ' .. money.to_string(eval.total_cost, nil, true))
+        vendor_label:SetText('Vendor Sell: ' .. money.to_string(eval.vendor_value, nil, true))
+        profit_label:SetText('Vendor Profit: ' .. profit_color(money.to_string(eval.profit, nil, true)))
         
         -- Show auction profit if we have auction data
         if crafted_item_price then
@@ -240,9 +240,9 @@ function update_material_listing()
             auction_profit_label:SetText('AH Profit: ' .. aux.color.gray('No data'))
         end
     else
-        profit_label:SetText('Profit: ' .. aux.color.red('Missing materials'))
-        cost_label:SetText('Cost: -')
-        vendor_label:SetText('Vendor: ' .. money.to_string(eval.vendor_value, nil, true))
+        cost_label:SetText('Mats Cost: -')
+        vendor_label:SetText('Vendor Sell: ' .. money.to_string(eval.vendor_value, nil, true))
+        profit_label:SetText('Vendor Profit: ' .. aux.color.red('Missing materials'))
         auction_profit_label:SetText('AH Profit: -')
     end
 end

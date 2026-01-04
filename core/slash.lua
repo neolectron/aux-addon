@@ -88,12 +88,27 @@ function SlashCmdList.AUX(command)
 		if not aux.account_data.purchase_summary then
 			purchase_summary.hide()
 		end
-	elseif arguments[1] == 'reset' and arguments[2] == 'profit' then
-		purchase_summary.reset_alltime_profit()
-		aux.print('All-time profit tracking has been reset.')
-	elseif arguments[1] == 'top' then
-		local limit = tonumber(arguments[2]) or 10
-		purchase_summary.print_top_items(limit)
+	elseif arguments[1] == 'profit' then
+		if arguments[2] == 'reset' or arguments[2] == 'clear' then
+			purchase_summary.reset_alltime_profit()
+			aux.print('All-time profit tracking has been reset.')
+		elseif arguments[2] == 'top' then
+			local limit = tonumber(arguments[3]) or 10
+			purchase_summary.print_top_items(limit)
+		else
+			-- Show profit status by default
+			local spent, vendor, items = purchase_summary.get_alltime_profit()
+			local profit = vendor - spent
+			local profit_color = profit >= 0 and aux.color.green or aux.color.red
+			local money = require 'aux.util.money'
+			aux.print(aux.color.gold('=== Auto-Buy Profit Stats ==='))
+			aux.print('Total spent: ' .. money.to_string(spent, nil, true))
+			aux.print('Total vendor value: ' .. money.to_string(vendor, nil, true))
+			aux.print('Profit: ' .. profit_color(money.to_string(profit, nil, true)))
+			aux.print('Items purchased: ' .. items)
+			aux.print(' ')
+			aux.print('Commands: profit reset | profit top [N]')
+		end
 	elseif arguments[1] == 'wowauction' or arguments[1] == 'wa' then
 		-- Build item name from remaining arguments
 		local item_name = ''
@@ -222,8 +237,7 @@ function SlashCmdList.AUX(command)
             aux.color[aux.account_data.theme == 'modern' and 'green' or 'red']('modern') .. ']')
 		aux.print('- show hidden [' .. status(aux.account_data.showhidden) .. ']')
 		aux.print('- purchase summary [' .. status(aux.account_data.purchase_summary) .. ']')
-		aux.print('- reset profit')
-		aux.print('- top [N] - Show top N profitable items')
+		aux.print('- profit <status|reset|top [N]>')
 		aux.print('- wowauction <item> - Get WoWAuctions.net link')
 		aux.print('- craft <status|ready|missing|safe|recipes|profitable|reset>')
     end

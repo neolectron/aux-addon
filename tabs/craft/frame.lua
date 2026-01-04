@@ -159,10 +159,14 @@ function aux.handle.INIT_UI()
         {name='Recipe', width=.70, align='LEFT'},    -- Recipe name (with safe indicator)
         {name='Vendor', width=.30, align='RIGHT'},   -- Vendor value
     }
+    recipe_listing:SetSelection(function(data)
+        return data and data.recipe_name and data.recipe_name == selected_recipe_name
+    end)
     recipe_listing:SetHandler('OnClick', function(st, data, self, button)
         if data and data.recipe_name then
             selected_recipe_name = data.recipe_name
             scan_recipe_materials(data.recipe_name)
+            st:Update()  -- Refresh to show selection highlight
         end
     end)
     recipe_listing:SetHandler('OnEnter', function(st, data, self)

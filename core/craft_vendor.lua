@@ -431,22 +431,27 @@ function M.print_safe_materials()
 end
 
 -- Session tracking for material purchases
-M.craft_session = {}
+local craft_session = {}
 
 function M.reset_session()
-    M.craft_session = {}
+    craft_session = {}
 end
 
 function M.add_to_session(item_id, item_name, quantity, cost)
-    if not M.craft_session[item_id] then
-        M.craft_session[item_id] = {
+    if not item_id then return end
+    if not craft_session[item_id] then
+        craft_session[item_id] = {
             name = item_name,
             quantity = 0,
             total_cost = 0,
         }
     end
-    M.craft_session[item_id].quantity = M.craft_session[item_id].quantity + quantity
-    M.craft_session[item_id].total_cost = M.craft_session[item_id].total_cost + cost
+    craft_session[item_id].quantity = craft_session[item_id].quantity + quantity
+    craft_session[item_id].total_cost = craft_session[item_id].total_cost + cost
+end
+
+function M.get_session()
+    return craft_session
 end
 
 -- Check what can be crafted with current session materials
@@ -459,7 +464,7 @@ function M.get_craftable()
         local max_crafts = 999999
         
         for _, mat in ipairs(recipe.materials) do
-            local have = M.craft_session[mat.item_id]
+            local have = craft_session[mat.item_id]
             if not have or have.quantity < mat.quantity then
                 can_craft = false
                 break
@@ -474,7 +479,7 @@ function M.get_craftable()
             -- Calculate profit
             local mat_cost = 0
             for _, mat in ipairs(recipe.materials) do
-                local have = M.craft_session[mat.item_id]
+                local have = craft_session[mat.item_id]
                 local avg_cost = have.total_cost / have.quantity
                 mat_cost = mat_cost + (avg_cost * mat.quantity)
             end
@@ -503,7 +508,7 @@ function M.print_session()
     aux.print(aux.color.gold('--- Craft Materials Session ---'))
     
     local has_mats = false
-    for item_id, data in pairs(M.craft_session) do
+    for item_id, data in pairs(craft_session) do
         has_mats = true
         local avg = data.total_cost / data.quantity
         aux.print(format('%s: %d (avg: %s)', 
@@ -548,7 +553,7 @@ function M.get_partial_recipes()
         local have = {}
         
         for _, mat in ipairs(recipe.materials) do
-            local session_mat = M.craft_session[mat.item_id]
+            local session_mat = craft_session[mat.item_id]
             if session_mat and session_mat.quantity > 0 then
                 have_any = true
                 have[mat.name] = session_mat.quantity
@@ -593,7 +598,7 @@ function M.get_needed_quantity(item_id, target_crafts)
         local have_this = 0
         
         for _, mat in ipairs(recipe.materials) do
-            local session_mat = M.craft_session[mat.item_id]
+            local session_mat = craft_session[mat.item_id]
             local have = session_mat and session_mat.quantity or 0
             
             if mat.item_id == item_id then

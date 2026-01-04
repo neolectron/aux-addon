@@ -171,8 +171,9 @@ do
 	local locked
 	function M.bid_in_progress() return locked end
 	function M.place_bid(type, index, amount, on_success, is_auto_buy)
-		if locked then return end
+		if locked then return false, 'busy' end
 		local money_before = GetMoney()
+		if money_before < amount then return false, 'gold' end
 		PlaceAuctionBid(type, index, amount)
 		if money_before >= amount then
 			locked = true
@@ -185,12 +186,10 @@ do
 				item_id = info.parse_link(link)
 			end
 			thread(when, signal_received, function()
-				-- Track only auto-buy (buyout) purchases for profit tracking
+				-- Track ALL buyout purchases for profit tracking (both manual and auto-buy)
 				if name and amount > 0 and amount >= buyout_price then
-					if is_auto_buy then
-						purchase_summary.add_purchase(name, texture, count, amount, item_id)
-						purchase_summary.update_display()
-					end
+					purchase_summary.add_purchase(name, texture, count, amount, item_id)
+					purchase_summary.update_display()
 					-- Print buyout message with price
 					local count_str = count > 1 and (count .. "x ") or ""
 					print(color.green("Bought: ") .. count_str .. name .. " for " .. money.to_string(amount, true))
@@ -209,7 +208,9 @@ do
 					kill()
 				end
 			end)
+			return true
 		end
+		return false
 	end
 end
 
