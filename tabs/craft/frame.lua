@@ -13,6 +13,8 @@ local scan = require 'aux.core.scan'
 local filter_util = require 'aux.util.filter'
 local completion = require 'aux.util.completion'
 
+local top_divider
+
 function aux.handle.INIT_UI()
     frame = CreateFrame('Frame', nil, aux.frame)
     frame:SetAllPoints()
@@ -145,63 +147,45 @@ function aux.handle.INIT_UI()
         search_box = editbox
     end
     do
-        gui.horizontal_line(frame, -40)
+        top_divider = gui.horizontal_line(frame, -40)
     end
 
-    -- Prominent message when no recipes are cached
+    -- Compact message when no recipes are cached (sits under search bar separator)
     do
         local msg_frame = CreateFrame('Frame', nil, frame)
-        msg_frame:SetPoint('TOPLEFT', aux.frame.content, 'TOPLEFT', 0, -45)
-        msg_frame:SetPoint('TOPRIGHT', aux.frame.content, 'TOPRIGHT', 0, -45)
-        msg_frame:SetHeight(80)
-        msg_frame:Hide()  -- Hidden by default
-        
-        -- Background (WoW 1.12 compatible)
+        msg_frame:SetPoint('TOPLEFT', top_divider, 'BOTTOMLEFT', 0, -4)
+        msg_frame:SetPoint('TOPRIGHT', top_divider, 'BOTTOMRIGHT', 0, -4)
+        msg_frame:SetHeight(24)
+        msg_frame:Hide()
+
         local bg = msg_frame:CreateTexture(nil, 'BACKGROUND')
         bg:SetAllPoints()
         bg:SetTexture(0.1, 0.1, 0.1)
-        bg:SetAlpha(0.8)
-        
-        -- Icon
-        local icon = msg_frame:CreateTexture(nil, 'ARTWORK')
-        icon:SetWidth(32)
-        icon:SetHeight(32)
-        icon:SetPoint('LEFT', 15, 0)
-        icon:SetTexture('Interface\\Icons\\INV_Misc_QuestionMark')
-        
-        -- Title
-        local title = msg_frame:CreateFontString(nil, 'OVERLAY')
-        title:SetFont(STANDARD_TEXT_FONT, 13, 'BOLD')
-        title:SetPoint('TOPLEFT', icon, 'TOPRIGHT', 10, 5)
-        title:SetPoint('RIGHT', -15, 0)
-        title:SetTextColor(1, 0.82, 0)
-        title:SetText('No Profession Data Found')
-        title:SetJustifyH('LEFT')
-        
-        -- Instructions
+        bg:SetAlpha(0.7)
+
         local text = msg_frame:CreateFontString(nil, 'OVERLAY')
-        text:SetFont(STANDARD_TEXT_FONT, 11)
-        text:SetPoint('TOPLEFT', title, 'BOTTOMLEFT', 0, -5)
-        text:SetPoint('RIGHT', -15, 0)
-        text:SetTextColor(1, 1, 1)
-        text:SetText('Open your profession windows (Mining, Engineering, etc.) to automatically scan and cache recipes.|n|nRecipes will persist across sessions for instant access.')
+        text:SetFont(STANDARD_TEXT_FONT, 12)
+        text:SetPoint('LEFT', 10, 0)
+        text:SetPoint('RIGHT', -10, 0)
         text:SetJustifyH('LEFT')
-        
+        text:SetTextColor(1, 0.82, 0)
+        text:SetText('No profession data cached. Open and close a profession window to scan recipes.')
+
         no_recipe_message = msg_frame
     end
 
     -- Left panel: Recipe list
     frame.recipes = gui.panel(frame)
-    frame.recipes:SetWidth(240)
+    frame.recipes:SetWidth(365)
     frame.recipes:SetPoint('TOPLEFT', aux.frame.content, 'TOPLEFT', 0, 0)
     frame.recipes:SetPoint('BOTTOMLEFT', aux.frame.content, 'BOTTOMLEFT', 0, 40)
 
     recipe_listing = listing.new(frame.recipes)
     recipe_listing:SetColInfo{
-        {name='Recipe', width=.45, align='LEFT'},    -- Recipe name (with safe indicator)
-        {name='AH Price', width=.18, align='RIGHT'}, -- Lowest seen AH price for output
-        {name='Mats Cost', width=.18, align='RIGHT'},-- Total reagent cost
-        {name='Profit', width=.19, align='RIGHT'},   -- AH profit (price - mats)
+        {name='Recipe', width=.38, align='LEFT'},    -- Recipe name (with safe indicator)
+        {name='Mats Cost', width=.206, align='RIGHT'},-- Total reagent cost
+        {name='AH Price', width=.206, align='RIGHT'}, -- Lowest seen AH price for output
+        {name='Profit', width=.206, align='RIGHT'},   -- AH profit (price - mats)
     }
     recipe_listing:SetSelection(function(data)
         return data and data.recipe_name and data.recipe_name == selected_recipe_name
@@ -236,18 +220,13 @@ function aux.handle.INIT_UI()
     -- Profit info panel (bottom right, above status bar)
     frame.profit_info = CreateFrame('Frame', nil, frame)
     frame.profit_info:SetHeight(22)
-    frame.profit_info:SetPoint('BOTTOMLEFT', aux.frame.content, 'BOTTOMLEFT', 245, 40)
+    frame.profit_info:SetPoint('BOTTOMLEFT', aux.frame.content, 'BOTTOMLEFT', 370, 40)
     frame.profit_info:SetPoint('BOTTOMRIGHT', aux.frame.content, 'BOTTOMRIGHT', 0, 40)
     
     do
-        vendor_label = gui.label(frame.profit_info, gui.font_size.small)
-        vendor_label:SetPoint('LEFT', 8, 0)
-        vendor_label:SetText('Vendor: -')
-    end
-    do
         cost_label = gui.label(frame.profit_info, gui.font_size.small)
-        cost_label:SetPoint('LEFT', vendor_label, 'RIGHT', 8, 0)
-        cost_label:SetText('Cost: -')
+        cost_label:SetPoint('LEFT', 8, 0)
+        cost_label:SetText('Mats Cost: -')
     end
     do
         profit_label = gui.label(frame.profit_info, gui.font_size.small)
@@ -267,8 +246,8 @@ function aux.handle.INIT_UI()
     frame.results:SetPoint('BOTTOMLEFT', frame.profit_info, 'TOPLEFT', 0, 3)
     frame.results:SetPoint('BOTTOMRIGHT', frame.profit_info, 'TOPRIGHT', 0, 3)
 
-    results_listing = auction_listing.new(frame.results, 16, auction_listing.search_columns)
-    results_listing:SetSort(1, 2, 3, 4, 5, 6, 7, 8)
+    results_listing = auction_listing.new(frame.results, 16, auction_listing.craft_columns)
+    results_listing:SetSort(1, 2, 3, 4, 5, 6)
     results_listing:Reset()
     results_listing:SetHandler('OnClick', function(row, button)
         if IsAltKeyDown() and button == 'LeftButton' then
@@ -291,27 +270,6 @@ function aux.handle.INIT_UI()
         status_bar:update_status(1, 0)
         status_bar:set_text('Select a recipe to scan')
         status_bar_frame = status_bar
-    end
-    
-    -- Cache status label
-    do
-        local label = gui.label(frame, gui.font_size.small)
-        label:SetPoint('LEFT', status_bar, 'RIGHT', 8, 0)
-        label:SetText('No recipes')
-        cache_status_label = label
-    end
-    
-    -- Rescan button (force open profession windows)
-    do
-        local btn = gui.button(frame, gui.font_size.small)
-        btn:SetHeight(25)
-        btn:SetWidth(60)
-        btn:SetPoint('LEFT', cache_status_label, 'RIGHT', 8, 0)
-        btn:SetText('Rescan')
-        btn:SetScript('OnClick', function()
-            aux.print('Please open your profession windows to scan recipes.')
-            aux.print('Recipes will be automatically cached for future use.')
-        end)
     end
     
     do

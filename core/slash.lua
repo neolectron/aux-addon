@@ -7,6 +7,7 @@ local post = require 'aux.tabs.post'
 local purchase_summary = require 'aux.util.purchase_summary'
 local craft_vendor = require 'aux.core.craft_vendor'
 local search_cache = require 'aux.core.search_cache'
+local profession_scanner = require 'aux.core.profession_scanner'
 
 function status(enabled)
 	return (enabled and aux.color.green'on' or aux.color.red'off')
@@ -219,6 +220,15 @@ function SlashCmdList.AUX(command)
 	elseif arguments[1] == 'cache' then
 		if arguments[2] == 'clear' or arguments[2] == 'reset' then
 			search_cache.clear()
+			if aux.realm_data then
+				aux.realm_data.craft_recipe_stats = {}
+				aux.realm_data.craft_recipe_stats_by_id = {}
+				aux.realm_data.craft_material_prices = {}
+			end
+			if profession_scanner and profession_scanner.clear_cache then
+				profession_scanner.clear_cache()
+			end
+			aux.print('[Craft] Recipe stats and material cache cleared')
 		elseif arguments[2] == 'debug' then
 			search_cache.debug()
 		elseif arguments[2] == 'limit' then

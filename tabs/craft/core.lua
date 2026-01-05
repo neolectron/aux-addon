@@ -68,18 +68,30 @@ function tab.CLOSE()
 end
 
 -- Event handler to refresh UI after profession scan
-local function on_profession_close()
+function profession_cache_updated()
+    -- Safely refresh UI when new profession data is available
+    update_cache_status()
     if tab_is_open then
-        -- Profession window closed, refresh UI to show new recipes
         update_recipe_listing()
-        update_cache_status()
         update_no_recipe_message()
     end
+end
+
+-- Event handler to refresh UI after profession scan
+local function on_profession_close()
+    profession_cache_updated()
+end
+
+-- Refresh as soon as a profession window opens (so data shows without closing)
+local function on_profession_show()
+    profession_cache_updated()
 end
 
 -- Register event listeners
 aux.event_listener('TRADE_SKILL_CLOSE', on_profession_close)
 aux.event_listener('CRAFT_CLOSE', on_profession_close)
+aux.event_listener('TRADE_SKILL_SHOW', on_profession_show)
+aux.event_listener('CRAFT_SHOW', on_profession_show)
 
 -- Execute search from search box
 function execute_search(resume)
@@ -292,8 +304,8 @@ function update_recipe_listing()
         tinsert(rows, T.map(
             'cols', T.list(
                 T.map('value', name_display),
-                T.map('value', ah_str),
                 T.map('value', mat_str),
+                T.map('value', ah_str),
                 T.map('value', profit_str)
             ),
             'recipe_name', r.name,
@@ -389,7 +401,6 @@ function update_material_listing()
     if eval.all_found then
         local profit_color = eval.profit > 0 and aux.color.green or aux.color.red
         cost_label:SetText('Mats Cost: ' .. money.to_string(eval.total_cost, nil, true))
-        vendor_label:SetText('Vendor Sell: ' .. money.to_string(eval.vendor_value, nil, true))
         profit_label:SetText('Vendor Profit: ' .. profit_color(money.to_string(eval.profit, nil, true)))
         
         -- Show auction profit if we have auction data
@@ -403,7 +414,6 @@ function update_material_listing()
         end
     else
         cost_label:SetText('Mats Cost: -')
-        vendor_label:SetText('Vendor Sell: ' .. money.to_string(eval.vendor_value, nil, true))
         profit_label:SetText('Vendor Profit: ' .. aux.color.red('Missing materials'))
         auction_profit_label:SetText('AH Profit: -')
     end
@@ -541,8 +551,6 @@ end
 
 -- Update cache status display
 function update_cache_status()
-    if not cache_status_label then return end
-    
     -- Lazy load profession_scanner
     if not profession_scanner then
         local success, module = pcall(require, 'aux.core.profession_scanner')
@@ -562,15 +570,17 @@ function update_cache_status()
     local recipes = craft_vendor.get_recipes()
     local recipe_count = recipes and aux.size(recipes) or 0
     
-    if has_cache then
-        cache_status_label:SetText(aux.color.green(format('Recipes: %d (cached)', recipe_count)))
-    elseif recipe_count > 0 then
-        cache_status_label:SetText(aux.color.yellow(format('Recipes: %d (hardcoded)', recipe_count)))
-    else
-        cache_status_label:SetText(aux.color.red('No recipes - open profession window'))
+    if cache_status_label then
+        if has_cache then
+            cache_status_label:SetText(aux.color.green(format('Recipes: %d (cached)', recipe_count)))
+        elseif recipe_count > 0 then
+            cache_status_label:SetText(aux.color.yellow(format('Recipes: %d (hardcoded)', recipe_count)))
+        else
+            cache_status_label:SetText(aux.color.red('No recipes - open profession window'))
+        end
     end
     
-    -- Update the prominent message too
+    -- Update the compact message too
     update_no_recipe_message()
 end
 
@@ -590,9 +600,13 @@ function update_no_recipe_message()
     -- Show message only if we have zero recipes (not even hardcoded)
     if recipe_count == 0 and not has_cache then
         no_recipe_message:Show()
+        frame.recipes:ClearAllPoints()
         frame.recipes:SetPoint('TOPLEFT', no_recipe_message, 'BOTTOMLEFT', 0, -5)
+        frame.recipes:SetPoint('BOTTOMLEFT', aux.frame.content, 'BOTTOMLEFT', 0, 40)
     else
         no_recipe_message:Hide()
+        frame.recipes:ClearAllPoints()
         frame.recipes:SetPoint('TOPLEFT', aux.frame.content, 'TOPLEFT', 0, 0)
+        frame.recipes:SetPoint('BOTTOMLEFT', aux.frame.content, 'BOTTOMLEFT', 0, 40)
     end
 end

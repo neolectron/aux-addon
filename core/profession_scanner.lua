@@ -106,8 +106,12 @@ function scan_trade_skill()
     aux.print(format('Scanned %d %s recipes', aux.size(recipes), profession_name))
     
     -- Notify Craft tab to update its UI
-    if aux.tabs and aux.tabs.craft and aux.tabs.craft.update_cache_status then
-        aux.tabs.craft.update_cache_status()
+    if aux.tabs and aux.tabs.craft then
+        if aux.tabs.craft.profession_cache_updated then
+            aux.tabs.craft.profession_cache_updated()
+        elseif aux.tabs.craft.update_cache_status then
+            aux.tabs.craft.update_cache_status()
+        end
     end
 end
 
@@ -180,8 +184,12 @@ function scan_craft()
     aux.print(format('Scanned %d %s recipes', aux.size(recipes), profession_name))
     
     -- Notify Craft tab to update its UI
-    if aux.tabs and aux.tabs.craft and aux.tabs.craft.update_cache_status then
-        aux.tabs.craft.update_cache_status()
+    if aux.tabs and aux.tabs.craft then
+        if aux.tabs.craft.profession_cache_updated then
+            aux.tabs.craft.profession_cache_updated()
+        elseif aux.tabs.craft.update_cache_status then
+            aux.tabs.craft.update_cache_status()
+        end
     end
 end
 

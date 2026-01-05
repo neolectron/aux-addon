@@ -18,11 +18,18 @@ local aux = require 'aux'
 
 local persistence = require 'aux.util.persistence'
 
+-- Ensure account_data exists early to avoid nil accesses during load hooks
+if not aux.account_data then aux.account_data = {} end
+
 local history_schema = {'tuple', '#', {next_push='number'}, {daily_min_buyout='number'}, {data_points={'list', ';', {'tuple', '@', {value='number'}, {time='number'}}}}}
 
 local value_cache = {}
 
 function aux.handle.LOAD2()
+	-- Ensure data tables exist before use
+	if not aux.account_data then aux.account_data = {} end
+	if not aux.faction_data then aux.faction_data = {} end
+	if not aux.faction_data.history then aux.faction_data.history = {} end
 	data = aux.faction_data.history
 	local _, name = GetChannelName("LFT")
 	if aux.account_data.sharing and not name then

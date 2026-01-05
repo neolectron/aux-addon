@@ -242,6 +242,10 @@ function M.tooltip_find(pattern, tooltip)
 end
 
 function M.load_tooltip(frame, tooltip)
+    if not tooltip then
+        frame:Hide()
+        return
+    end
     frame:ClearLines()
     for _, line in ipairs(tooltip) do
         if line.right_text then
