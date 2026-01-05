@@ -174,6 +174,20 @@ function aux.handle.INIT_UI()
         no_recipe_message = msg_frame
     end
 
+    -- Craftable filter checkbox (above recipe list)
+    do
+        local checkbox = gui.checkbox(frame)
+        checkbox:SetPoint('TOPLEFT', top_divider, 'BOTTOMLEFT', 10, -8)
+        checkbox:SetScript('OnClick', function()
+            show_only_craftable = checkbox:GetChecked()
+            update_recipe_listing()
+        end)
+        local label = gui.label(checkbox, gui.font_size.small)
+        label:SetPoint('LEFT', checkbox, 'RIGHT', 4, 1)
+        label:SetText('Show only craftable')
+        craftable_checkbox = checkbox
+    end
+
     -- Left panel: Recipe list
     frame.recipes = gui.panel(frame)
     frame.recipes:SetWidth(365)
@@ -183,7 +197,7 @@ function aux.handle.INIT_UI()
     recipe_listing = listing.new(frame.recipes)
     recipe_listing:SetColInfo{
         {name='Recipe', width=.38, align='LEFT', icon=true},    -- Recipe name (with safe indicator)
-        {name='Mats Cost', width=.206, align='RIGHT'},-- Total reagent cost
+        {name='Missing Mats', width=.206, align='RIGHT'},-- Cost of materials not in inventory
         {name='AH Price', width=.206, align='RIGHT'}, -- Lowest seen AH price for output
         {name='Profit', width=.206, align='RIGHT'},   -- AH profit (price - mats)
     }
@@ -192,10 +206,23 @@ function aux.handle.INIT_UI()
     end)
     recipe_listing:SetHandler('OnClick', function(st, data, self, button)
         if data and data.recipe_name and data.recipe then
-            selected_recipe_name = data.recipe_name
-            selected_recipe = data.recipe  -- Use the recipe object directly
-            scan_recipe_materials(data.recipe_name, data.recipe)
-            st:Update()  -- Refresh to show selection highlight
+            if button == 'RightButton' then
+                -- Right-click: show context menu
+                -- Capture values before creating menu (closure scope)
+                local recipe_name = data.recipe_name
+                local recipe = data.recipe
+                gui.menu(
+                    'Quick Scan (1 page per material)', function()
+                        quick_scan_recipe(recipe_name, recipe)
+                    end
+                )
+            else
+                -- Left-click: normal scan
+                selected_recipe_name = data.recipe_name
+                selected_recipe = data.recipe  -- Use the recipe object directly
+                scan_recipe_materials(data.recipe_name, data.recipe)
+                st:Update()  -- Refresh to show selection highlight
+            end
         end
     end)
     recipe_listing:SetHandler('OnEnter', function(st, data, self)
@@ -209,6 +236,7 @@ function aux.handle.INIT_UI()
         end
         GameTooltip:AddLine(' ')
         GameTooltip:AddLine('Left-click to scan for materials', 0.5, 0.5, 0.5)
+        GameTooltip:AddLine('Right-click for quick scan (1 page)', 0.5, 0.5, 0.5)
         GameTooltip:Show()
     end)
     recipe_listing:SetHandler('OnLeave', function(st, data, self)
@@ -231,35 +259,12 @@ function aux.handle.INIT_UI()
         scan_all_button = btn
     end
 
-    -- Right side: Profit info at bottom, results fill the rest
-    -- Profit info panel (bottom right, above status bar)
-    frame.profit_info = CreateFrame('Frame', nil, frame)
-    frame.profit_info:SetHeight(22)
-    frame.profit_info:SetPoint('BOTTOMLEFT', aux.frame.content, 'BOTTOMLEFT', 370, 40)
-    frame.profit_info:SetPoint('BOTTOMRIGHT', aux.frame.content, 'BOTTOMRIGHT', 0, 40)
-    
-    do
-        cost_label = gui.label(frame.profit_info, gui.font_size.small)
-        cost_label:SetPoint('LEFT', 8, 0)
-        cost_label:SetText('Mats Cost: -')
-    end
-    do
-        profit_label = gui.label(frame.profit_info, gui.font_size.small)
-        profit_label:SetPoint('LEFT', cost_label, 'RIGHT', 8, 0)
-        profit_label:SetText('Profit: -')
-    end
-    do
-        auction_profit_label = gui.label(frame.profit_info, gui.font_size.small)
-        auction_profit_label:SetPoint('LEFT', profit_label, 'RIGHT', 8, 0)
-        auction_profit_label:SetText('AH Profit: -')
-    end
-
-    -- Results panel (fills space from top to profit info)
+    -- Right side: Results panel (fills entire right side)
     frame.results = gui.panel(frame)
     frame.results:SetPoint('TOPLEFT', frame.recipes, 'TOPRIGHT', 5, 0)
     frame.results:SetPoint('TOPRIGHT', aux.frame.content, 'TOPRIGHT', 0, 0)
-    frame.results:SetPoint('BOTTOMLEFT', frame.profit_info, 'TOPLEFT', 0, 3)
-    frame.results:SetPoint('BOTTOMRIGHT', frame.profit_info, 'TOPRIGHT', 0, 3)
+    frame.results:SetPoint('BOTTOMLEFT', frame.recipes, 'BOTTOMLEFT', frame.recipes:GetWidth() + 5, 0)
+    frame.results:SetPoint('BOTTOMRIGHT', aux.frame.content, 'BOTTOMRIGHT', 0, 0)
 
     results_listing = auction_listing.new(frame.results, 16, auction_listing.craft_columns)
     results_listing:SetSort(1, 2, 3, 4, 5, 6)
@@ -275,6 +280,20 @@ function aux.handle.INIT_UI()
             search_tab.execute(nil, false)
         end
     end)
+
+    -- Buy missing materials button below results
+    do
+        local btn = gui.button(frame, gui.font_size.large)
+        btn:SetPoint('TOPLEFT', frame.results, 'BOTTOMLEFT', 0, -4)
+        btn:SetPoint('TOPRIGHT', frame.results, 'BOTTOMRIGHT', 0, -4)
+        btn:SetHeight(22)
+        btn:SetBackdropColor(0.1, 0.7, 0.1, 0.9)
+        btn:SetText('Buy Missing Materials')
+        btn:SetScript('OnClick', function()
+            buy_missing_materials()
+        end)
+        buy_missing_button = btn
+    end
 
     -- Bottom bar: Status
     do

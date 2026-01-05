@@ -17,6 +17,10 @@ local tab = aux.tab 'Craft'
 
 -- Forward declarations
 local update_recipe_stats_cache
+local set_missing_flags
+local clear_missing_flags
+local clear_all_missing_flags
+local refresh_missing_flags_from_cache
 
 -- Ensure the shared search cache module is available
 local function ensure_search_cache()
@@ -119,45 +123,133 @@ function log_search_cache_stats(prefix)
     aux.print(format('%s Cache entries: %d / %d, auctions: %d%s', label, entries, limit, auctions, oldest_text and (', oldest ' .. oldest_text .. ' ago') or ''))
 end
 
--- Build and run a scan that includes all unique mats and outputs for this profession
-function scan_all_materials()
+-- Calculate estimated scan time for uncached items only (4 seconds per page/item)
+function update_scan_all_estimate()
     local recipes = craft_vendor.get_recipes() or {}
-    local mat_set = {}
-    local out_set = {}
-    local mat_list = {}
-    local out_list = {}
-    scan_all_targets = {}
-
-    for name, recipe in pairs(recipes) do
-        local crafted_name = crafted_search_name(recipe, name)
-        if crafted_name and crafted_name ~= '' and not out_set[crafted_name] then
-            out_set[crafted_name] = true
-            tinsert(out_list, crafted_name)
-            if recipe and recipe.output_id then
-                scan_all_targets[crafted_name .. '/exact'] = recipe.output_id
+    local scanned_mats = {}
+    local total_items = 0
+    
+    -- Count unique uncached items only (outputs + materials)
+    for recipe_name, recipe in pairs(recipes) do
+        if recipe then
+            -- Count output if uncached
+            local crafted_name = crafted_search_name(recipe, recipe_name)
+            if crafted_name and crafted_name ~= '' and recipe.output_id then
+                local key = crafted_name .. '/exact'
+                local cached_price = get_cached_item_price(key, recipe.output_id)
+                if not cached_price then
+                    total_items = total_items + 1
+                end
             end
-        end
-        if recipe and recipe.materials then
-            for _, mat in ipairs(recipe.materials) do
-                local mname = strlower(mat.name)
-                if mname ~= '' and not mat_set[mname] then
-                    mat_set[mname] = true
-                    tinsert(mat_list, mname)
-                    scan_all_targets[mname .. '/exact'] = mat.item_id
+            
+            -- Count unique uncached materials
+            if recipe.materials then
+                for _, mat in ipairs(recipe.materials) do
+                    local mname = strlower(mat.name)
+                    local key = mname .. '/exact'
+                    if mname ~= '' and not scanned_mats[key] then
+                        scanned_mats[key] = true
+                        local cached_price = get_cached_item_price(key, mat.item_id)
+                        if not cached_price then
+                            total_items = total_items + 1
+                        end
+                    end
                 end
             end
         end
     end
-
-    table.sort(mat_list)
-    table.sort(out_list)
-
-    local filter_parts = {}
-    for _, name in ipairs(out_list) do
-        tinsert(filter_parts, name .. '/exact')
+    
+    -- Each item takes 4 seconds per page, scan-all uses 1 page per item
+    local estimated_seconds = total_items * 4
+    local text = total_items == 0 and 'Scan All Mats (all cached)' or format('Scan All Mats (%ds)', estimated_seconds)
+    
+    if scan_all_button then
+        scan_all_button:SetText(text)
     end
-    for _, name in ipairs(mat_list) do
-        tinsert(filter_parts, name .. '/exact')
+end
+
+-- Build and run a scan that includes all unique mats and outputs for this profession
+-- Prioritizes uncached items first, then cached items, organized by recipe
+function scan_all_materials()
+    local recipes = craft_vendor.get_recipes() or {}
+    scan_all_targets = {}
+    local recipe_names = {}
+    local scanned_mats = {}
+    
+    -- Collect sorted recipe names for consistent ordering
+    for name, _ in pairs(recipes) do
+        tinsert(recipe_names, name)
+    end
+    table.sort(recipe_names)
+    
+    -- Separate items into uncached and cached lists
+    local uncached_items = {}  -- {key, item_id, recipe_name_for_context}
+    local cached_items = {}
+    
+    -- First pass: collect all unique items and categorize them
+    for _, recipe_name in ipairs(recipe_names) do
+        local recipe = recipes[recipe_name]
+        if recipe then
+            -- Check output for this recipe
+            local crafted_name = crafted_search_name(recipe, recipe_name)
+            if crafted_name and crafted_name ~= '' and recipe.output_id then
+                local key = crafted_name .. '/exact'
+                local cached_price = get_cached_item_price(key, recipe.output_id)
+                if cached_price then
+                    tinsert(cached_items, {key, recipe.output_id})
+                else
+                    tinsert(uncached_items, {key, recipe.output_id})
+                end
+            end
+            
+            -- Check materials for this recipe
+            if recipe.materials then
+                for _, mat in ipairs(recipe.materials) do
+                    local mname = strlower(mat.name)
+                    local key = mname .. '/exact'
+                    if mname ~= '' and not scanned_mats[key] then
+                        scanned_mats[key] = true
+                        local cached_price = get_cached_item_price(key, mat.item_id)
+                        if cached_price then
+                            tinsert(cached_items, {key, mat.item_id})
+                        else
+                            tinsert(uncached_items, {key, mat.item_id})
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Build filter: only uncached items (skip cached items)
+    local filter_parts = {}
+    local total_outputs = 0
+    local total_materials = 0
+    
+    for _, item_data in ipairs(uncached_items) do
+        tinsert(filter_parts, item_data[1])
+        scan_all_targets[item_data[1]] = item_data[2]
+    end
+    
+    -- Count outputs vs materials based on what's in scan_all_targets
+    local output_set = {}
+    for _, recipe_name in ipairs(recipe_names) do
+        local recipe = recipes[recipe_name]
+        if recipe and recipe.output_id then
+            local crafted_name = crafted_search_name(recipe, recipe_name)
+            if crafted_name and crafted_name ~= '' then
+                output_set[crafted_name .. '/exact'] = true
+            end
+        end
+    end
+    total_outputs = 0
+    total_materials = 0
+    for key, _ in pairs(scan_all_targets) do
+        if output_set[key] then
+            total_outputs = total_outputs + 1
+        else
+            total_materials = total_materials + 1
+        end
     end
 
     local filter = table.concat(filter_parts, ';')
@@ -168,9 +260,61 @@ function scan_all_materials()
 
     search_box:SetText(filter)
     first_page_input:SetText('1')
-    last_page_input:SetText('')
-    aux.print(format('[Craft] Scan-all: %d recipes, %d outputs, %d materials', aux.size(recipes), getn(out_list), getn(mat_list)))
+    last_page_input:SetText('1')
+    aux.print(format('[Craft] Scan-all (uncached only): %d recipes, %d uncached outputs, %d uncached materials', aux.size(recipes), total_outputs, total_materials))
     log_search_cache_stats('[Craft] Before scan-all')
+    clear_all_missing_flags()
+    execute_search()
+end
+
+function quick_scan_recipe(recipe_name, recipe_obj)
+    -- Quick scan for a single recipe: scan only 1 page of each material + output
+    local recipe = recipe_obj or craft_vendor.recipes[recipe_name]
+    if not recipe then 
+        aux.print('ERROR: Recipe not found: ' .. recipe_name)
+        return 
+    end
+    
+    selected_recipe = recipe
+    selected_recipe_name = recipe_name
+    clear_missing_flags(recipe)
+    
+    -- Clear old results immediately for instant visual feedback
+    scan.abort(scan_id)
+    material_prices = {}
+    crafted_item_price = nil
+    scan_results = {}
+    results_listing:SetDatabase({})
+    results_listing:Reset()
+    status_bar:set_text('Loading cached prices for quick scan...')
+    update_search_display()
+    
+    -- Build filter for this recipe's output + materials
+    local filter_parts = {}
+    local crafted_name = crafted_search_name(recipe, recipe_name)
+    
+    -- Always include crafted item
+    if crafted_name and crafted_name ~= '' then
+        tinsert(filter_parts, crafted_name .. '/exact')
+    end
+    
+    -- Add all materials
+    if recipe.materials then
+        for _, mat in ipairs(recipe.materials) do
+            tinsert(filter_parts, strlower(mat.name) .. '/exact')
+        end
+    end
+    
+    local filter = table.concat(filter_parts, ';')
+    if filter == '' then
+        aux.print('[Craft] Recipe has no items to scan')
+        return
+    end
+    
+    search_box:SetText(filter)
+    first_page_input:SetText('1')
+    last_page_input:SetText('1')
+    aux.print(format('[Craft] Quick scan for %s', recipe_name))
     execute_search()
 end
 
@@ -188,6 +332,7 @@ filter_string = nil  -- current search filter for caching
 recipe_stats = nil  -- per-recipe cached summary (ah price, mats cost, profit)
 recipe_stats_by_id = nil -- keyed by output_id
 scan_all_targets = nil -- map of filter key -> item_id for scan-all runs
+show_only_craftable = false  -- filter to show only recipes with sufficient materials
 
 -- Flag to track if tab is open
 local tab_is_open = false
@@ -218,6 +363,9 @@ function tab.OPEN()
     -- Initialize page inputs
     if first_page_input:GetText() == '' then
         first_page_input:SetText('1')
+    end
+    if last_page_input:GetText() == '' then
+        last_page_input:SetText('2')
     end
 end
 
@@ -265,6 +413,17 @@ function execute_search(resume)
         status_bar:set_text('Filter error: ' .. (error or 'unknown'))
         return
     end
+
+    local start_query, start_page = 1, 1
+    if resume and search_continuation then
+        start_query, start_page = unpack(search_continuation)
+        start_query = start_query or 1
+        start_page = start_page or 1
+        for i = 1, start_query - 1 do
+            tremove(queries, 1)
+        end
+        first_page_input:SetText(tostring(start_page))
+    end
     
     scan.abort(scan_id)
     
@@ -279,10 +438,33 @@ function execute_search(resume)
     status_bar:update_status(0, 0)
     status_bar:set_text('Scanning...')
     
+    local max_pages = 999
     local first_page = tonumber(first_page_input:GetText())
-    local last_page = tonumber(last_page_input:GetText())
+    first_page = first_page and max(1, math.floor(first_page)) or 1
+    if resume and start_page then
+        first_page = start_page
+    end
+
+    local user_last_page = tonumber(last_page_input:GetText())
+    user_last_page = user_last_page and max(1, math.floor(user_last_page)) or nil
+
+    local desired_last_page = user_last_page and max(user_last_page, first_page) or (first_page + max_pages - 1)
+    local effective_last_page = min(desired_last_page, first_page + max_pages - 1)
+
+    local first_page_index = max(first_page - 1, 0)
+    local last_page_index = max(effective_last_page - 1, first_page_index)
+
+    for _, query in ipairs(queries) do
+        if query.blizzard_query then
+            query.blizzard_query.first_page = first_page_index
+            query.blizzard_query.last_page = last_page_index
+        end
+    end
+
+    local last_page = effective_last_page
     
     local current_query = 0
+    local current_page = 1
     local total_queries = getn(queries)
     local page_records = {}
     scan_id = scan.start{
@@ -306,17 +488,42 @@ function execute_search(resume)
             page_records = {}
             local q = current_query > 0 and current_query or 1
             local tq = total_queries > 0 and total_queries or 1
+
             total_scan_pages = max(total_scan_pages or 1, 1)
             page_progress = min(page_progress or 0, total_scan_pages)
-            
-            status_bar:update_status((q - 1) / tq, page_progress / total_scan_pages)
-            
-            -- Use actual_page for display (shows real AH page number)
-            local display_page = actual_page or page_progress
-            local display_total = (last_page or 0) + 1
-            
-                -- Always show scan progress (materials + crafted item = always multiple queries)
-            status_bar:set_text(format('Scanning %d / %d (Page %d / %d)', q, tq, display_page, display_total))
+            current_page = actual_page or page_progress or 1
+
+            -- Progress bar shows overall scan progress through all items, not per-page progress
+            status_bar:update_status(q / tq, 0)
+
+            -- Get current query's prettified name for display
+            local query_name = ''
+            if queries and queries[q] then
+                query_name = queries[q].prettified or ''
+            end
+
+            -- Display format: "Q/TQ ItemName(Page X/Y)"
+            local display_page = max(current_page or 1, 1)
+            local display_total = max(
+                total_scan_pages,
+                (last_page and (last_page + 1)) or 0,
+                display_page,
+                1
+            )
+
+            -- Show overall query progress with current item name and page info
+            status_bar:set_text(format('%d/%d %s(Page %d/%d)', q, tq, query_name ~= '' and query_name or 'Scanning', display_page, display_total))
+            -- Set tooltip to show current item being scanned (strip brackets from prettified name)
+            if query_name and query_name ~= '' then
+                local success, clean_name = pcall(function() return query_name:gsub('[%[%]]', '') end)
+                if success and clean_name then
+                    status_bar:set_tooltip_text('Scanning: ' .. clean_name)
+                else
+                    status_bar:set_tooltip_text('Scanning: ' .. query_name)
+                end
+            else
+                status_bar:set_tooltip_text('Scanning...')
+            end
         end,
         on_auction = function(auction_record)
             if auction_record.buyout_price > 0 then
@@ -351,11 +558,12 @@ function execute_search(resume)
             end
         end,
         on_page_scanned = function()
-            if not (scan_filter and getn(scan_results) > 0) then return end
-            if not (ensure_search_cache() and search_cache.store) then return end
-
-            -- Store cumulative results so far for this filter (allows aborting mid-run and still reusing data)
-            search_cache.store(scan_filter, scan_results)
+            if not scan_filter then return end
+            local cache_ready = ensure_search_cache() and search_cache.store
+            if cache_ready then
+                -- Store cumulative results so far for this filter (allows aborting mid-run and still reusing data)
+                search_cache.store(scan_filter, scan_results)
+            end
 
             -- Build per-item buckets from the current page only for efficiency
             local buckets = {}
@@ -374,15 +582,18 @@ function execute_search(resume)
                         item_keys[key] = mat.item_id
                     end
                 end
-            elseif scan_all_targets then
+            end
+
+            if scan_all_targets then
                 for key, item_id in pairs(scan_all_targets) do
-                    buckets[key] = {}
+                    buckets[key] = buckets[key] or {}
                     item_keys[key] = item_id
                 end
             end
 
-            if next(item_keys) then
-                for _, record in ipairs(page_records) do
+            if cache_ready and next(item_keys) then
+                local source_records = getn(page_records) > 0 and page_records or scan_results
+                for _, record in ipairs(source_records) do
                     for key, target_id in pairs(item_keys) do
                         if record.item_id == target_id then
                             tinsert(buckets[key], record)
@@ -394,6 +605,10 @@ function execute_search(resume)
                         search_cache.store(key, records)
                     end
                 end
+            end
+
+            if scan_all_targets then
+                refresh_missing_flags_from_cache()
             end
 
             -- Refresh recipe list so Mats/AH/Profit reflect newly cached prices per page
@@ -430,9 +645,10 @@ function execute_search(resume)
                                 item_keys[key] = mat.item_id
                             end
                         end
-                    elseif scan_all_targets then
+                    end
+                    if scan_all_targets then
                         for key, item_id in pairs(scan_all_targets) do
-                            buckets[key] = {}
+                            buckets[key] = buckets[key] or {}
                             item_keys[key] = item_id
                         end
                     end
@@ -464,6 +680,22 @@ function execute_search(resume)
             update_material_listing()
             results_listing:SetDatabase(scan_results)
 
+            if selected_recipe then
+                local mats_missing = false
+                if selected_recipe.materials then
+                    for _, mat in ipairs(selected_recipe.materials) do
+                        if not material_prices[mat.item_id] then
+                            mats_missing = true
+                            break
+                        end
+                    end
+                end
+                local ah_missing = not crafted_item_price
+                set_missing_flags(selected_recipe, mats_missing, ah_missing)
+            elseif ran_scan_all then
+                refresh_missing_flags_from_cache()
+            end
+
             -- Refresh recipe list so AH Price / mats cost can reflect freshly cached data (e.g., after Scan All)
             if ran_scan_all then
                 update_recipe_listing()
@@ -471,11 +703,12 @@ function execute_search(resume)
 
             log_search_cache_stats('[Craft] Cache after complete')
         end,
-        on_abort = function(continuation)
+        on_abort = function()
             scanning = false
-            search_continuation = continuation
+            -- Resume from next page of the current query
+            search_continuation = { current_query or 1, (current_page or 1) + 1 }
             status_bar:update_status(1, 1)
-            if continuation then
+            if search_continuation then
                 status_bar:set_text('Scan paused - click Resume')
             else
                 status_bar:set_text('Scan aborted')
@@ -483,9 +716,42 @@ function execute_search(resume)
             update_search_display()
             update_material_listing()
             results_listing:SetDatabase(scan_results)
+            if scan_all_targets then
+                refresh_missing_flags_from_cache()
+                update_recipe_listing()
+            end
             log_search_cache_stats('[Craft] Cache after stop')
         end,
     }
+end
+
+-- Check if a recipe is craftable (has all materials in inventory) using cached inventory counts
+function is_recipe_craftable(recipe, inventory_cache)
+    if not recipe or not recipe.materials then
+        return false
+    end
+    
+    for _, mat in ipairs(recipe.materials) do
+        local inventory_count = inventory_cache[mat.item_id] or 0
+        if inventory_count < mat.quantity then
+            return false
+        end
+    end
+    
+    return true
+end
+
+-- Build a cache of inventory item counts for efficient filtering
+function build_inventory_cache()
+    local cache = {}
+    for slot in info.inventory() do
+        local item_info = info.container_item(unpack(slot))
+        if item_info then
+            local item_id = item_info.item_id
+            cache[item_id] = (cache[item_id] or 0) + (item_info.count or 1)
+        end
+    end
+    return cache
 end
 
 -- Build recipe list for display
@@ -498,19 +764,27 @@ function get_recipe_list()
     
     local recipe_count = aux.size(all_recipes)
     
+    -- Build inventory cache once for efficient filtering
+    local inventory_cache = show_only_craftable and build_inventory_cache() or nil
+    
     for name, recipe in pairs(all_recipes) do
         local vendor_price = recipe.vendor_price or 1  -- Default to 1 copper if nil
         local vendor_total = vendor_price * recipe.output_quantity
         local mat_count = getn(recipe.materials or {})
         local is_safe = mat_count == 1 or (mat_count > 0 and craft_vendor.is_safe_material(recipe.materials[1].item_id))
         
-        tinsert(recipes, {
-            name = name,
-            recipe = recipe,
-            vendor_value = vendor_total,
-            mat_count = mat_count,
-            is_safe = is_safe,
-        })
+        -- Apply craftability filter if enabled
+        if show_only_craftable and not is_recipe_craftable(recipe, inventory_cache) then
+            -- Skip this recipe if it's not craftable and filter is enabled
+        else
+            tinsert(recipes, {
+                name = name,
+                recipe = recipe,
+                vendor_value = vendor_total,
+                mat_count = mat_count,
+                is_safe = is_safe,
+            })
+        end
     end
     
     -- Sort alphabetically for stable display
@@ -521,6 +795,9 @@ end
 function update_recipe_listing()
     local rows = T.acquire()
     local recipes = get_recipe_list()
+    
+    -- Build inventory cache once for use in missing mats calculation
+    local inventory_cache = build_inventory_cache()
     
     for i, r in ipairs(recipes) do
         local name_display = r.is_safe and aux.color.green(r.name) or r.name
@@ -573,8 +850,44 @@ function update_recipe_listing()
         local ah_price = stats.ah_unit_price
         local mat_cost = stats.mat_cost
         local profit = stats.profit
-        local ah_str = ah_price and money.to_string(ah_price, nil, true) or 'unknown'
-        local mat_str = mat_cost and money.to_string(mat_cost, nil, true) or 'unknown'
+        local ah_str
+        if ah_price then
+            ah_str = money.to_string(ah_price, nil, true)
+        elseif stats.ah_missing then
+            ah_str = aux.color.red('Missing')
+        else
+            ah_str = 'unknown'
+        end
+
+        local mat_str
+        if r.recipe and r.recipe.materials then
+            -- Calculate cost of missing materials only (using cached inventory)
+            local missing_cost = 0
+            local has_prices = true
+            for _, mat in ipairs(r.recipe.materials) do
+                local key = strlower(mat.name) .. '/exact'
+                local cached_price = get_cached_item_price(key, mat.item_id)
+                if cached_price then
+                    local inventory_count = inventory_cache[mat.item_id] or 0
+                    local needed = math.max(0, mat.quantity - inventory_count)
+                    missing_cost = missing_cost + (cached_price * needed)
+                else
+                    has_prices = false
+                    break
+                end
+            end
+            if has_prices then
+                mat_str = money.to_string(missing_cost, nil, true)
+            else
+                mat_str = aux.color.red('Missing')
+            end
+        elseif mat_cost then
+            mat_str = money.to_string(mat_cost, nil, true)
+        elseif stats.mats_missing then
+            mat_str = aux.color.red('Missing')
+        else
+            mat_str = 'unknown'
+        end
         local profit_str
         if profit then
             local color = profit > 0 and aux.color.green or aux.color.red
@@ -601,6 +914,7 @@ function update_recipe_listing()
     end
     
     recipe_listing:SetData(rows)
+    update_scan_all_estimate()
 end
 
 -- Calculate profit for a recipe based on scanned material prices
@@ -662,7 +976,9 @@ update_recipe_stats_cache = function(recipe, mat_cost, ah_unit_price, profit)
     if key then
         local stats = recipe_stats[key] or {}
         if mat_cost then stats.mat_cost = mat_cost end
+        if mat_cost then stats.mats_missing = false end
         if ah_unit_price then stats.ah_unit_price = ah_unit_price end
+        if ah_unit_price then stats.ah_missing = false end
         if profit then stats.profit = profit end
         stats.output_quantity = recipe.output_quantity or stats.output_quantity or 1
         stats.timestamp = time()
@@ -671,11 +987,74 @@ update_recipe_stats_cache = function(recipe, mat_cost, ah_unit_price, profit)
     if id then
         local stats = recipe_stats_by_id[id] or {}
         if mat_cost then stats.mat_cost = mat_cost end
+        if mat_cost then stats.mats_missing = false end
         if ah_unit_price then stats.ah_unit_price = ah_unit_price end
+        if ah_unit_price then stats.ah_missing = false end
         if profit then stats.profit = profit end
         stats.output_quantity = recipe.output_quantity or stats.output_quantity or 1
         stats.timestamp = time()
         recipe_stats_by_id[id] = stats
+    end
+end
+
+-- Set missing flags for a recipe after a completed scan
+set_missing_flags = function(recipe, mats_missing, ah_missing)
+    if not recipe then return end
+    local key = recipe.name
+    local id = recipe.output_id
+    if key then
+        local stats = recipe_stats[key] or {}
+        if mats_missing ~= nil then stats.mats_missing = mats_missing end
+        if ah_missing ~= nil then stats.ah_missing = ah_missing end
+        recipe_stats[key] = stats
+    end
+    if id then
+        local stats = recipe_stats_by_id[id] or {}
+        if mats_missing ~= nil then stats.mats_missing = mats_missing end
+        if ah_missing ~= nil then stats.ah_missing = ah_missing end
+        recipe_stats_by_id[id] = stats
+    end
+end
+
+-- Clear missing flags to revert to unknown state before a new scan
+clear_missing_flags = function(recipe)
+    if not recipe then return end
+    local key = recipe.name
+    local id = recipe.output_id
+    if key and recipe_stats[key] then
+        recipe_stats[key].mats_missing = nil
+        recipe_stats[key].ah_missing = nil
+    end
+    if id and recipe_stats_by_id[id] then
+        recipe_stats_by_id[id].mats_missing = nil
+        recipe_stats_by_id[id].ah_missing = nil
+    end
+end
+
+clear_all_missing_flags = function()
+    local recipes = craft_vendor.get_recipes() or {}
+    for _, recipe in pairs(recipes) do
+        clear_missing_flags(recipe)
+    end
+end
+
+-- Recompute missing flags for all recipes based on current cache contents
+refresh_missing_flags_from_cache = function()
+    local recipes = craft_vendor.get_recipes() or {}
+    for _, recipe in pairs(recipes) do
+        local mats_missing = false
+        if recipe.materials then
+            for _, mat in ipairs(recipe.materials) do
+                local key = strlower(mat.name) .. '/exact'
+                local cached_price = get_cached_item_price(key, mat.item_id)
+                if not cached_price then
+                    mats_missing = true
+                    break
+                end
+            end
+        end
+        local ah_missing = not get_cached_output_price(recipe, recipe.name)
+        set_missing_flags(recipe, mats_missing, ah_missing)
     end
 end
 
@@ -685,33 +1064,13 @@ function update_material_listing()
     
     local eval = calculate_recipe_profit(selected_recipe)
     
-    -- Update profit display with vendor and auction profit
-    if eval.all_found then
-        local profit_color = eval.profit > 0 and aux.color.green or aux.color.red
-        cost_label:SetText('Mats Cost: ' .. money.to_string(eval.total_cost, nil, true))
-        profit_label:SetText('Vendor Profit: ' .. profit_color(money.to_string(eval.profit, nil, true)))
-        
-        -- Show auction profit if we have auction data
-        if crafted_item_price then
-            local auction_total = crafted_item_price * selected_recipe.output_quantity
-            local auction_profit = auction_total - eval.total_cost
-            local auction_color = auction_profit > 0 and aux.color.green or aux.color.red
-            auction_profit_label:SetText('AH Profit: ' .. auction_color(money.to_string(auction_profit, nil, true)))
-        else
-            auction_profit_label:SetText('AH Profit: ' .. aux.color.gray('No data'))
-        end
-    else
-        cost_label:SetText('Mats Cost: -')
-        profit_label:SetText('Vendor Profit: ' .. aux.color.red('Missing materials'))
-        auction_profit_label:SetText('AH Profit: -')
-    end
-
     -- Persist summary for recipe list (only when we have meaningful data)
     local mat_cost_for_stats = eval.all_found and eval.total_cost or nil
     local ah_price_for_stats = crafted_item_price
     local profit_for_stats = (mat_cost_for_stats and ah_price_for_stats) and (ah_price_for_stats * (selected_recipe.output_quantity or 1) - mat_cost_for_stats) or nil
     update_recipe_stats_cache(selected_recipe, mat_cost_for_stats, ah_price_for_stats, profit_for_stats)
     update_recipe_listing()
+    update_buy_missing_button()
 end
 
 -- Scan for materials of selected recipe
@@ -725,6 +1084,7 @@ function scan_recipe_materials(recipe_name, recipe_obj)
     
     selected_recipe = recipe
     selected_recipe_name = recipe_name
+    clear_missing_flags(recipe)
     
     -- Clear old results immediately for instant visual feedback
     scan.abort(scan_id)
@@ -735,6 +1095,8 @@ function scan_recipe_materials(recipe_name, recipe_obj)
     results_listing:Reset()
     status_bar:set_text('Loading cached prices...')
     update_search_display()
+    
+    local crafted_name = crafted_search_name(recipe, recipe_name)
     
     -- Load cached prices per material from the shared search cache
     local cached_count = 0
@@ -752,8 +1114,6 @@ function scan_recipe_materials(recipe_name, recipe_obj)
     if cached_count > 0 then
         aux.print(format('[Craft] Loaded %d material prices from cache for %s', cached_count, crafted_name or recipe_name or '?'))
     end
-    
-    local crafted_name = crafted_search_name(recipe, recipe_name)
 
     -- Load cached auction records from search_cache for instant display
     if ensure_search_cache() and search_cache.get then
@@ -799,31 +1159,42 @@ function scan_recipe_materials(recipe_name, recipe_obj)
     -- Update profit display with cached prices before search
     update_material_listing()
     
-    -- Build search filter: crafted item + only uncached materials
-    local filter_parts = {}
-    local skipped_mats = 0
+    -- Build search filter: uncached items first, then cached items for refresh
+    -- This matches scan_all_materials behavior
+    local uncached_items = {}
+    local cached_items = {}
     
-    -- Always include crafted item (refresh AH price)
-    tinsert(filter_parts, crafted_name .. '/exact')
+    -- Add crafted item
+    if crafted_name and crafted_name ~= '' then
+        local key = crafted_name .. '/exact'
+        local cached_price = get_cached_item_price(key, recipe.output_id)
+        if cached_price then
+            tinsert(cached_items, key)
+        else
+            tinsert(uncached_items, key)
+        end
+    end
     
-    -- Add only materials that lack cached price
+    -- Add materials
     if recipe.materials then
         for _, mat in ipairs(recipe.materials) do
-            local already_cached = false
-            if ensure_search_cache() then
-                local key = strlower(mat.name) .. '/exact'
-                local cached_price = get_cached_item_price(key, mat.item_id)
-                if cached_price then
-                    already_cached = true
-                    skipped_mats = skipped_mats + 1
-                end
-            end
-            if not already_cached then
-                tinsert(filter_parts, strlower(mat.name) .. '/exact')
+            local key = strlower(mat.name) .. '/exact'
+            local cached_price = get_cached_item_price(key, mat.item_id)
+            if cached_price then
+                tinsert(cached_items, key)
+            else
+                tinsert(uncached_items, key)
             end
         end
-    else
-        aux.print('ERROR: Recipe has no materials: ' .. recipe_name)
+    end
+    
+    -- Build filter: uncached items first, then cached items
+    local filter_parts = {}
+    for _, key in ipairs(uncached_items) do
+        tinsert(filter_parts, key)
+    end
+    for _, key in ipairs(cached_items) do
+        tinsert(filter_parts, key)
     end
     
     filter_string = table.concat(filter_parts, ';')
@@ -831,13 +1202,13 @@ function scan_recipe_materials(recipe_name, recipe_obj)
     -- Update search box
     search_box:SetText(filter_string)
     
-    if skipped_mats > 0 then
-        aux.print(format('[Craft] Skipped %d cached materials for %s', skipped_mats, crafted_name or recipe_name or '?'))
+    if getn(cached_items) > 0 then
+        aux.print(format('[Craft] Scanning %s: %d uncached, %d cached (for refresh)', recipe_name, getn(uncached_items), getn(cached_items)))
     end
     
-    -- Set page range to scan all pages
+    -- Set page range for full recipe scan (no page limit, like normal recipe clicks)
     first_page_input:SetText('1')
-    last_page_input:SetText('')
+    last_page_input:SetText('2')
     
     -- Execute search - cached results already loaded and visible
     execute_search()
@@ -851,6 +1222,154 @@ function buy_profitable_materials()
     local filter_string = 'for-craft/' .. strlower(selected_recipe_name) .. '/craft-profit/1c'
     
     aux.set_tab(1)  -- Switch to Search tab
+    search_tab.set_filter(filter_string)
+    search_tab.execute(nil, false)
+end
+
+-- Helper function to count items in inventory by item_id
+function count_inventory_items(item_id)
+    local count = 0
+    for slot in info.inventory() do
+        local item_info = info.container_item(unpack(slot))
+        if item_info and item_info.item_id == item_id then
+            count = count + (item_info.count or 1)
+        end
+    end
+    return count
+end
+
+-- Update "Buy Missing Materials" button with price and profit info
+function update_buy_missing_button()
+    if not buy_missing_button or not selected_recipe then
+        if buy_missing_button then
+            buy_missing_button:SetText('Buy Missing Materials')
+            buy_missing_button:Disable()
+        end
+        return
+    end
+    
+    local to_buy_cost = 0
+    local total_mat_cost = 0
+    local items_to_buy = 0
+    local has_missing_prices = false
+    
+    -- Calculate costs for missing and total materials
+    if selected_recipe.materials then
+        for _, mat in ipairs(selected_recipe.materials) do
+            local inventory_count = count_inventory_items(mat.item_id)
+            local needed = mat.quantity - inventory_count
+            local mat_unit_price = material_prices[mat.item_id] and material_prices[mat.item_id].min_price or 0
+            
+            -- Check if we have price for this material
+            if mat_unit_price == 0 then
+                has_missing_prices = true
+            end
+            
+            local mat_total_cost = mat_unit_price * mat.quantity
+            total_mat_cost = total_mat_cost + mat_total_cost
+            
+            if needed > 0 then
+                to_buy_cost = to_buy_cost + (mat_unit_price * needed)
+                items_to_buy = items_to_buy + needed
+            end
+        end
+    end
+    
+    -- Check if we have the crafted item price
+    if crafted_item_price == nil or crafted_item_price == 0 then
+        has_missing_prices = true
+    end
+    
+    -- Disable button if any prices are missing
+    if has_missing_prices then
+        buy_missing_button:SetText('Buy Missing Materials (scanning...)')
+        buy_missing_button:Disable()
+        return
+    end
+    
+    -- Calculate profit
+    local craft_price = crafted_item_price or 0
+    local craft_qty = selected_recipe.output_quantity or 1
+    local craft_total = craft_price * craft_qty
+    local profit = craft_total - total_mat_cost
+    
+    -- Build button text
+    local button_text = 'Buy Missing Materials'
+    if items_to_buy > 0 then
+        local cost_str = money.to_string(to_buy_cost, nil, true)
+        local profit_str = ''
+        if profit > 0 then
+            profit_str = ' | Profit: ' .. aux.color.green(money.to_string(profit, nil, true))
+        elseif profit < 0 then
+            profit_str = ' | Profit: ' .. aux.color.red(money.to_string(profit, nil, true))
+        else
+            profit_str = ' | Profit: 0'
+        end
+        button_text = 'Buy Missing: ' .. cost_str .. profit_str
+        buy_missing_button:Enable()
+    else
+        -- All materials already in inventory
+        local profit_str = ''
+        if profit > 0 then
+            profit_str = ' | Profit: ' .. aux.color.green(money.to_string(profit, nil, true))
+        elseif profit < 0 then
+            profit_str = ' | Profit: ' .. aux.color.red(money.to_string(profit, nil, true))
+        else
+            profit_str = ' | Profit: 0'
+        end
+        local craft_qty = selected_recipe.output_quantity or 1
+        button_text = 'Ready to Craft (x' .. craft_qty .. ')' .. profit_str
+        buy_missing_button:Enable()
+    end
+    
+    buy_missing_button:SetText(button_text)
+end
+
+-- Buy missing materials to craft 1 item
+function buy_missing_materials()
+    if not selected_recipe then
+        aux.print('[Craft] No recipe selected')
+        return
+    end
+    
+    local to_buy = {}
+    local total_to_buy = 0
+    
+    -- Check each material against inventory
+    if selected_recipe.materials then
+        for _, mat in ipairs(selected_recipe.materials) do
+            local inventory_count = count_inventory_items(mat.item_id)
+            local needed = mat.quantity - inventory_count
+            
+            if needed > 0 then
+                tinsert(to_buy, {
+                    name = mat.name,
+                    item_id = mat.item_id,
+                    quantity = needed,
+                    quantity_per_stack = info.item(mat.item_id).stack_count or 20
+                })
+                total_to_buy = total_to_buy + needed
+            end
+        end
+    end
+    
+    if total_to_buy == 0 then
+        aux.print('[Craft] You have all materials for ' .. selected_recipe_name)
+        return
+    end
+    
+    aux.print(format('[Craft] Need to buy %d items for %s', total_to_buy, selected_recipe_name))
+    
+    -- Build search filter for missing materials
+    local filter_parts = {}
+    for _, item in ipairs(to_buy) do
+        tinsert(filter_parts, strlower(item.name) .. '/exact')
+    end
+    
+    local filter_string = table.concat(filter_parts, ';')
+    
+    -- Switch to Search tab and search for missing materials
+    aux.set_tab(1)
     search_tab.set_filter(filter_string)
     search_tab.execute(nil, false)
 end
