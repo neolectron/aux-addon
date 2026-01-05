@@ -21,12 +21,23 @@ end
 
 function tab.OPEN()
     frame:Show()
+    
+    -- Initialize search state on first open (when UI is ready)
+    if not current_search() then
+        if not restore_search_state() then
+            new_search()
+        end
+    end
+    
     update_search_listings()
     update_filter_display()
 end
 
 function tab.CLOSE()
-    current_search().table:SetSelectedRecord()
+    local current = current_search()
+    if current and current.table then
+        current.table:SetSelectedRecord()
+    end
     frame:Hide()
 end
 

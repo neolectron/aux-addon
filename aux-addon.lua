@@ -57,12 +57,12 @@ end
 
 function handle.LOAD()
     _G.aux = aux or {}
-    assign(aux, {
-        account = {},
-        realm = {},
-        faction = {},
-        character = {},
-    })
+    -- Preserve existing SavedVariables data
+    aux.account = aux.account or {}
+    aux.realm = aux.realm or {}
+    aux.faction = aux.faction or {}
+    aux.character = aux.character or {}
+    
     M.account_data = assign(aux.account, {
         scale = 1,
         ignore_owner = true,
@@ -241,7 +241,9 @@ do
 end
 
 function handle.LOAD2()
-	frame:SetScale(account_data.scale)
+	if M.account_data and M.account_data.scale then
+		frame:SetScale(M.account_data.scale)
+	end
 end
 
 function AUCTION_HOUSE_SHOW()

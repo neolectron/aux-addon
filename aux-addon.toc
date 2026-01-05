@@ -24,6 +24,7 @@ core\history.lua
 core\search_cache.lua
 core\disenchant.lua
 core\craft_vendor.lua
+core\profession_scanner.lua
 util\filter.lua
 util\completion.lua
 core\slash.lua

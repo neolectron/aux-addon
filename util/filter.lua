@@ -298,7 +298,7 @@ M.filters = {
 			-- Find recipe (case-insensitive)
 			local target_recipe = nil
 			local target_name = nil
-			for name, recipe in pairs(craft_vendor.recipes) do
+			for name, recipe in pairs(craft_vendor.get_recipes()) do
 				if strlower(name) == strlower(recipe_name) then
 					target_recipe = recipe
 					target_name = name
@@ -326,7 +326,7 @@ M.filters = {
 		validator = function(recipe_name)
 			-- Find recipe
 			local target_recipe = nil
-			for name, recipe in pairs(craft_vendor.recipes) do
+			for name, recipe in pairs(craft_vendor.get_recipes()) do
 				if strlower(name) == strlower(recipe_name) then
 					target_recipe = recipe
 					break

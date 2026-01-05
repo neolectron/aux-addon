@@ -148,6 +148,48 @@ function aux.handle.INIT_UI()
         gui.horizontal_line(frame, -40)
     end
 
+    -- Prominent message when no recipes are cached
+    do
+        local msg_frame = CreateFrame('Frame', nil, frame)
+        msg_frame:SetPoint('TOPLEFT', aux.frame.content, 'TOPLEFT', 0, -45)
+        msg_frame:SetPoint('TOPRIGHT', aux.frame.content, 'TOPRIGHT', 0, -45)
+        msg_frame:SetHeight(80)
+        msg_frame:Hide()  -- Hidden by default
+        
+        -- Background (WoW 1.12 compatible)
+        local bg = msg_frame:CreateTexture(nil, 'BACKGROUND')
+        bg:SetAllPoints()
+        bg:SetTexture(0.1, 0.1, 0.1)
+        bg:SetAlpha(0.8)
+        
+        -- Icon
+        local icon = msg_frame:CreateTexture(nil, 'ARTWORK')
+        icon:SetWidth(32)
+        icon:SetHeight(32)
+        icon:SetPoint('LEFT', 15, 0)
+        icon:SetTexture('Interface\\Icons\\INV_Misc_QuestionMark')
+        
+        -- Title
+        local title = msg_frame:CreateFontString(nil, 'OVERLAY')
+        title:SetFont(STANDARD_TEXT_FONT, 13, 'BOLD')
+        title:SetPoint('TOPLEFT', icon, 'TOPRIGHT', 10, 5)
+        title:SetPoint('RIGHT', -15, 0)
+        title:SetTextColor(1, 0.82, 0)
+        title:SetText('No Profession Data Found')
+        title:SetJustifyH('LEFT')
+        
+        -- Instructions
+        local text = msg_frame:CreateFontString(nil, 'OVERLAY')
+        text:SetFont(STANDARD_TEXT_FONT, 11)
+        text:SetPoint('TOPLEFT', title, 'BOTTOMLEFT', 0, -5)
+        text:SetPoint('RIGHT', -15, 0)
+        text:SetTextColor(1, 1, 1)
+        text:SetText('Open your profession windows (Mining, Engineering, etc.) to automatically scan and cache recipes.|n|nRecipes will persist across sessions for instant access.')
+        text:SetJustifyH('LEFT')
+        
+        no_recipe_message = msg_frame
+    end
+
     -- Left panel: Recipe list
     frame.recipes = gui.panel(frame)
     frame.recipes:SetWidth(240)
@@ -163,9 +205,10 @@ function aux.handle.INIT_UI()
         return data and data.recipe_name and data.recipe_name == selected_recipe_name
     end)
     recipe_listing:SetHandler('OnClick', function(st, data, self, button)
-        if data and data.recipe_name then
+        if data and data.recipe_name and data.recipe then
             selected_recipe_name = data.recipe_name
-            scan_recipe_materials(data.recipe_name)
+            selected_recipe = data.recipe  -- Use the recipe object directly
+            scan_recipe_materials(data.recipe_name, data.recipe)
             st:Update()  -- Refresh to show selection highlight
         end
     end)
@@ -247,6 +290,28 @@ function aux.handle.INIT_UI()
         status_bar:set_text('Select a recipe to scan')
         status_bar_frame = status_bar
     end
+    
+    -- Cache status label
+    do
+        local label = gui.label(frame, gui.font_size.small)
+        label:SetPoint('LEFT', status_bar, 'RIGHT', 8, 0)
+        label:SetText('No recipes')
+        cache_status_label = label
+    end
+    
+    -- Rescan button (force open profession windows)
+    do
+        local btn = gui.button(frame, gui.font_size.small)
+        btn:SetHeight(25)
+        btn:SetWidth(60)
+        btn:SetPoint('LEFT', cache_status_label, 'RIGHT', 8, 0)
+        btn:SetText('Rescan')
+        btn:SetScript('OnClick', function()
+            aux.print('Please open your profession windows to scan recipes.')
+            aux.print('Recipes will be automatically cached for future use.')
+        end)
+    end
+    
     do
         local btn = gui.button(frame)
         btn:SetPoint('TOPLEFT', status_bar, 'TOPRIGHT', 5, 0)

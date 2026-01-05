@@ -12,10 +12,8 @@ local gui = require 'aux.gui'
 search_scan_id = 0
 
 function aux.handle.LOAD()
-	-- Try to restore saved search state, otherwise create empty search
-	if not restore_search_state() then
-		new_search()
-	end
+	-- Search state will be initialized when the tab is first opened
+	-- This ensures UI elements (status_bars, tables) are ready
 end
 
 function update_real_time(enable)
@@ -592,7 +590,10 @@ do
 
 		if state == SEARCHING then return end
 
-		local selection = current_search().table:GetSelection()
+		local current = current_search()
+		if not current then return end  -- Safety check
+		
+		local selection = current.table:GetSelection()
 		if not selection then
 			state = IDLE
 		elseif selection and state == IDLE then

@@ -5,11 +5,16 @@ local aux = require 'aux'
 local info = require 'aux.util.info'
 local money = require 'aux.util.money'
 
+-- Lazy load profession_scanner to avoid dependency issues
+local profession_scanner
+
 -- Craft-to-Vendor Recipe Database
+-- DEPRECATED: Hardcoded recipes kept as fallback only
+-- Primary source: profession_scanner dynamic cache
 -- For Mining + Engineering professions
 -- Each recipe: materials needed, output item, vendor price (per unit), output quantity
 -- base_value = opportunity cost of material (vendor sell price)
-M.recipes = {
+M.hardcoded_recipes = {
     -- ============ SMELTING (Mining) ============
     -- Only profitable conversions - buy ore cheap, smelt, vendor bars
     
@@ -190,6 +195,50 @@ M.recipes = {
     },
 }
 
+-- Dynamic recipe getter: Returns cached recipes OR fallback to hardcoded
+function M.get_recipes()
+    -- Lazy load profession_scanner
+    if not profession_scanner then
+        local success, module = pcall(require, 'aux.core.profession_scanner')
+        if success then
+            profession_scanner = module
+        end
+    end
+    
+    -- Check if profession_scanner is loaded and has cached recipes
+    if profession_scanner and profession_scanner.get_cached_recipes then
+        local success, cached = pcall(profession_scanner.get_cached_recipes)
+        
+        -- If cache has recipes, use them
+        if success and cached and aux.size(cached) > 0 then
+            return cached
+        end
+    end
+    
+    -- Otherwise fallback to hardcoded recipes (always return a table, never nil)
+    return M.hardcoded_recipes or {}
+end
+
+-- Convenience: Access recipes through this property (must be after M.get_recipes is defined!)
+M.recipes = setmetatable({}, {
+    __index = function(t, key)
+        if M.get_recipes then
+            return M.get_recipes()[key]
+        end
+        return nil
+    end,
+    __pairs = function(t)
+        if M.get_recipes then
+            return pairs(M.get_recipes())
+        end
+        return pairs({})
+    end,
+    __newindex = function(t, k, v)
+        -- Prevent direct assignment
+        error("Cannot assign to M.recipes directly. Use profession scanner.")
+    end,
+})
+
 -- Build reverse lookup: material item_id -> list of recipes that use it
 material_to_recipes = {}
 
@@ -200,7 +249,12 @@ function build_material_index()
     material_to_recipes = {}
     safe_materials = {}
     
-    for recipe_name, recipe in pairs(recipes) do
+    -- Safety check: ensure M.get_recipes exists
+    if not M.get_recipes then
+        return
+    end
+    
+    for recipe_name, recipe in pairs(M.get_recipes()) do
         for _, mat in ipairs(recipe.materials) do
             if not material_to_recipes[mat.item_id] then
                 material_to_recipes[mat.item_id] = {}
@@ -351,7 +405,7 @@ function M.find_profitable_recipes(min_profit)
     
     local profitable = {}
     
-    for recipe_name, _ in pairs(recipes) do
+    for recipe_name, _ in pairs(M.get_recipes()) do
         local eval = M.evaluate_recipe(recipe_name)
         if eval and eval.profit >= min_profit then
             tinsert(profitable, eval)
@@ -458,7 +512,7 @@ end
 function M.get_craftable()
     local craftable = {}
     
-    for recipe_name, recipe in pairs(recipes) do
+    for recipe_name, recipe in pairs(M.get_recipes()) do
         -- Check if we have all materials
         local can_craft = true
         local max_crafts = 999999
@@ -547,7 +601,7 @@ end
 function M.get_partial_recipes()
     local partial = {}
     
-    for recipe_name, recipe in pairs(recipes) do
+    for recipe_name, recipe in pairs(M.get_recipes()) do
         local have_any = false
         local missing = {}
         local have = {}
@@ -680,7 +734,7 @@ function M.print_recipes()
     aux.print(aux.color.gold('--- Craft-to-Vendor Recipes ---'))
     
     local sorted = {}
-    for name, recipe in pairs(recipes) do
+    for name, recipe in pairs(M.get_recipes()) do
         local vendor_total = recipe.vendor_price * recipe.output_quantity
         tinsert(sorted, {
             name = name,
@@ -708,5 +762,6 @@ end
 
 -- Initialize on addon load
 function aux.handle.LOAD()
+    -- build_material_index has a nil check for M.get_recipes, safe to call
     build_material_index()
 end
