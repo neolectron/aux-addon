@@ -338,6 +338,14 @@ show_only_craftable = false  -- filter to show only recipes with sufficient mate
 local inventory_cache = nil
 local inventory_cache_dirty = true  -- initially dirty, rebuild on first use
 
+-- Item info cache (Optimization #3)
+local item_info_cache = {}
+
+-- Deferred update timer (Optimization #5)
+local deferred_update_pending = false
+local deferred_update_timer = 0
+local DEFERRED_UPDATE_INTERVAL = 0.5  -- 500ms between deferred updates
+
 -- Flag to track if tab is open
 local tab_is_open = false
 
@@ -359,6 +367,11 @@ recipe_stats_by_id = realm_data.craft_recipe_stats_by_id
 -- Invalidate the inventory cache (mark as dirty)
 function invalidate_inventory_cache()
     inventory_cache_dirty = true
+end
+
+-- Invalidate item info cache
+function invalidate_item_info_cache()
+    item_info_cache = {}
 end
 
 -- Get or build the inventory cache on-demand
@@ -775,6 +788,26 @@ function build_inventory_cache()
     return cache
 end
 
+-- Optimization #3: Cache item info lookups to avoid repeated info.item() calls
+function get_cached_item_info(item_id)
+    if not item_info_cache[item_id] then
+        item_info_cache[item_id] = info.item(item_id)
+    end
+    return item_info_cache[item_id]
+end
+
+-- Optimization #2: Pre-compute recipe material search keys to avoid repeated string operations
+function precompute_recipe_keys(recipe)
+    if recipe and not recipe._material_keys then
+        recipe._material_keys = {}
+        if recipe.materials then
+            for i, mat in ipairs(recipe.materials) do
+                recipe._material_keys[i] = strlower(mat.name) .. '/exact'
+            end
+        end
+    end
+end
+
 -- Build recipe list for display
 function get_recipe_list()
     local recipes = {}
@@ -821,10 +854,14 @@ function update_recipe_listing()
     local inventory_cache = get_or_build_inventory_cache()
     
     for i, r in ipairs(recipes) do
+        -- Optimization #2: Use pre-computed keys if available
+        precompute_recipe_keys(r.recipe)
+        
         local name_display = r.is_safe and aux.color.green(r.name) or r.name
         local icon_texture
         if r.recipe.output_id then
-            local item_info = info.item(r.recipe.output_id)
+            -- Optimization #3: Use cached item info
+            local item_info = get_cached_item_info(r.recipe.output_id)
             icon_texture = item_info and item_info.texture
         end
         if not icon_texture then
@@ -837,7 +874,7 @@ function update_recipe_listing()
             local total_cost = 0
             local complete = true
             for _, mat in ipairs(r.recipe.materials) do
-                local key = strlower(mat.name) .. '/exact'
+                local key = r.recipe._material_keys[_] or (strlower(mat.name) .. '/exact')
                 local cached_price = get_cached_item_price(key, mat.item_id)
                 if cached_price then
                     total_cost = total_cost + (cached_price * mat.quantity)
@@ -886,7 +923,7 @@ function update_recipe_listing()
             local missing_cost = 0
             local has_prices = true
             for _, mat in ipairs(r.recipe.materials) do
-                local key = strlower(mat.name) .. '/exact'
+                local key = r.recipe._material_keys[_] or (strlower(mat.name) .. '/exact')
                 local cached_price = get_cached_item_price(key, mat.item_id)
                 if cached_price then
                     local inventory_count = inventory_cache[mat.item_id] or 0
@@ -935,7 +972,33 @@ function update_recipe_listing()
     end
     
     recipe_listing:SetData(rows)
-    update_scan_all_estimate()
+    
+    -- Optimization #5: Defer non-critical update
+    schedule_deferred_update()
+end
+
+-- Optimization #5: Schedule deferred updates for expensive calculations
+function schedule_deferred_update()
+    if not deferred_update_pending and tab_is_open then
+        deferred_update_pending = true
+        deferred_update_timer = 0
+    end
+end
+
+-- Handle deferred updates on OnUpdate
+function process_deferred_updates(elapsed)
+    if not elapsed or type(elapsed) ~= 'number' then
+        return  -- Skip if elapsed is invalid
+    end
+    
+    if deferred_update_pending then
+        deferred_update_timer = deferred_update_timer + elapsed
+        if deferred_update_timer >= DEFERRED_UPDATE_INTERVAL then
+            update_scan_all_estimate()  -- Run expensive calculation
+            deferred_update_pending = false
+            deferred_update_timer = 0
+        end
+    end
 end
 
 -- Calculate profit for a recipe based on scanned material prices

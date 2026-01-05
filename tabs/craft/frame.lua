@@ -323,6 +323,13 @@ function aux.handle.INIT_UI()
     
     -- Initial state
     update_search_display()
+    
+    -- Add OnUpdate for deferred updates (Optimization #5)
+    frame:SetScript('OnUpdate', function(self, elapsed)
+        -- Handle case where elapsed might be nil or passed differently
+        local elapsed_time = elapsed or 0.016  -- Default to ~60 FPS if nil
+        process_deferred_updates(elapsed_time)
+    end)
 end
 
 function update_real_time(enable)
