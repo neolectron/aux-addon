@@ -6,7 +6,7 @@ module 'aux.core.search_cache'
 local T = require 'T'
 
 -- Cache configuration defaults
-local DEFAULT_MAX_ENTRIES = 50
+local DEFAULT_MAX_ENTRIES = 200
 local CACHE_TTL = 30 * 60  -- 30 minutes default TTL
 
 -- Get aux reference lazily (avoid require at module load time)
