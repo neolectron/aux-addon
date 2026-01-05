@@ -385,7 +385,8 @@ function update_recipe_listing()
         if profit then
             local color = profit > 0 and aux.color.green or aux.color.red
             profit_str = color(money.to_string(profit, nil, true))
-        elseif mat_cost or ah_price then
+        elseif mat_cost then
+            -- We have material costs but still missing AH price, so it's pending
             profit_str = aux.color.gray('pending')
         else
             profit_str = 'unknown'
