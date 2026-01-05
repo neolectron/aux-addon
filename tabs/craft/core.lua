@@ -285,6 +285,14 @@ function update_recipe_listing()
     
     for i, r in ipairs(recipes) do
         local name_display = r.is_safe and aux.color.green(r.name) or r.name
+        local icon_texture
+        if r.recipe.output_id then
+            local item_info = info.item(r.recipe.output_id)
+            icon_texture = item_info and item_info.texture
+        end
+        if not icon_texture then
+            icon_texture = 'Interface\\Icons\\INV_Misc_QuestionMark'
+        end
         local stats = (r.recipe.output_id and recipe_stats_by_id[r.recipe.output_id]) or recipe_stats[r.name] or {}
         local ah_price = stats.ah_unit_price
         local mat_cost = stats.mat_cost
@@ -303,7 +311,7 @@ function update_recipe_listing()
         
         tinsert(rows, T.map(
             'cols', T.list(
-                T.map('value', name_display),
+                T.map('value', name_display, 'texture', icon_texture),
                 T.map('value', mat_str),
                 T.map('value', ah_str),
                 T.map('value', profit_str)
