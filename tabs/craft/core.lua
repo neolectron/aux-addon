@@ -15,6 +15,55 @@ local search_cache
 
 local tab = aux.tab 'Craft'
 
+-- Forward declarations
+local update_recipe_stats_cache
+
+-- Prefer crafted item name over spell name when building search filters
+local function crafted_search_name(recipe, recipe_name)
+    if recipe and recipe.output_id then
+        local item_info = info.item(recipe.output_id)
+        if item_info and item_info.name then
+            return strlower(item_info.name)
+        end
+    end
+    return strlower(recipe_name or '')
+end
+
+local function get_cached_output_price(recipe, recipe_name)
+    if not (recipe and recipe.output_id) then return nil end
+    if not search_cache then
+        local success, module = pcall(require, 'aux.core.search_cache')
+        if success then
+            search_cache = module
+        end
+    end
+    if not (search_cache and search_cache.get) then return nil end
+
+    local filter_parts = {}
+    local crafted_name = crafted_search_name(recipe, recipe_name)
+    if crafted_name and crafted_name ~= '' then
+        tinsert(filter_parts, crafted_name .. '/exact')
+    end
+    if recipe and recipe.materials then
+        for _, mat in ipairs(recipe.materials) do
+            tinsert(filter_parts, strlower(mat.name) .. '/exact')
+        end
+    end
+    local complete_filter = table.concat(filter_parts, ';')
+    local cached_data = search_cache.get(complete_filter)
+    if not (cached_data and cached_data.auctions) then return nil end
+
+    local min_price
+    for _, cached_auction in ipairs(cached_data.auctions) do
+        if cached_auction.item_id == recipe.output_id and cached_auction.unit_buyout_price and cached_auction.unit_buyout_price > 0 then
+            if not min_price or cached_auction.unit_buyout_price < min_price then
+                min_price = cached_auction.unit_buyout_price
+            end
+        end
+    end
+    return min_price
+end
+
 -- Current scan state
 scan_id = 0
 scanning = false
@@ -274,6 +323,7 @@ end
 function update_recipe_listing()
     local rows = T.acquire()
     local recipes = get_recipe_list()
+    local cached_material_prices = aux.realm_data.craft_material_prices or {}
     
     for i, r in ipairs(recipes) do
         local name_display = r.is_safe and aux.color.green(r.name) or r.name
@@ -286,6 +336,46 @@ function update_recipe_listing()
             icon_texture = 'Interface\\Icons\\INV_Misc_QuestionMark'
         end
         local stats = (r.recipe.output_id and recipe_stats_by_id[r.recipe.output_id]) or recipe_stats[r.name] or {}
+
+        -- If we lack stored mat cost, try to derive it from cached material prices for this profession
+        if not stats.mat_cost and r.recipe and r.recipe.materials then
+            local profession = r.recipe.profession or 'Unknown'
+            local cached_prices = cached_material_prices[profession]
+            if cached_prices then
+                local total_cost = 0
+                local complete = true
+                for _, mat in ipairs(r.recipe.materials) do
+                    local cached = cached_prices[mat.item_id]
+                    if cached and cached.price then
+                        total_cost = total_cost + (cached.price * mat.quantity)
+                    else
+                        complete = false
+                        break
+                    end
+                end
+                if complete then
+                    stats.mat_cost = total_cost
+                    update_recipe_stats_cache(r.recipe, total_cost, stats.ah_unit_price, stats.profit)
+                end
+            end
+        end
+
+        -- If we lack AH unit price, try to derive it from cached search results for this recipe
+        if not stats.ah_unit_price and r.recipe then
+            local cached_price = get_cached_output_price(r.recipe, r.name)
+            if cached_price then
+                stats.ah_unit_price = cached_price
+                update_recipe_stats_cache(r.recipe, stats.mat_cost, cached_price, stats.profit)
+            end
+        end
+
+        -- If we have both AH unit price and derived mat cost but missing profit, compute it
+        if stats.ah_unit_price and stats.mat_cost and not stats.profit then
+            local unit_price = stats.ah_unit_price
+            local out_qty = r.recipe.output_quantity or 1
+            stats.profit = unit_price * out_qty - stats.mat_cost
+            update_recipe_stats_cache(r.recipe, stats.mat_cost, unit_price, stats.profit)
+        end
         local ah_price = stats.ah_unit_price
         local mat_cost = stats.mat_cost
         local profit = stats.profit
@@ -367,7 +457,7 @@ function calculate_recipe_profit(recipe)
 end
 
 -- Persist lightweight per-recipe stats for list display
-local function update_recipe_stats_cache(recipe, mat_cost, ah_unit_price, profit)
+update_recipe_stats_cache = function(recipe, mat_cost, ah_unit_price, profit)
     if not recipe then return end
     local key = recipe.name
     local id = recipe.output_id
@@ -460,17 +550,7 @@ function scan_recipe_materials(recipe_name, recipe_obj)
         -- cached prices loaded
     end
     
-    -- Helper: pick a stable search name (prefer crafted item name)
-    local function recipe_search_name(r)
-        if r and r.output_id then
-            local item_info = info.item(r.output_id)
-            if item_info and item_info.name then
-                return strlower(item_info.name)
-            end
-        end
-        return strlower(recipe_name)
-    end
-    local crafted_search_name = recipe_search_name(recipe)
+    local crafted_name = crafted_search_name(recipe, recipe_name)
 
     -- Load cached auction records from search_cache for instant display
     if not search_cache then
@@ -483,7 +563,7 @@ function scan_recipe_materials(recipe_name, recipe_obj)
     if search_cache and search_cache.get then
         -- Build the same filter string that will be used for the search
         local filter_parts = {}
-        tinsert(filter_parts, crafted_search_name .. '/exact')
+        tinsert(filter_parts, crafted_name .. '/exact')
         if recipe.materials then
             for _, mat in ipairs(recipe.materials) do
                 tinsert(filter_parts, strlower(mat.name) .. '/exact')
@@ -522,7 +602,7 @@ function scan_recipe_materials(recipe_name, recipe_obj)
     local filter_parts = {}
     
     -- Add the crafted item first (so icon loads)
-    tinsert(filter_parts, crafted_search_name .. '/exact')
+    tinsert(filter_parts, crafted_name .. '/exact')
     
     -- Add all materials
     if recipe.materials then
