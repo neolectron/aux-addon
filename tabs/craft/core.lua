@@ -94,6 +94,86 @@ local function get_cached_item_price(filter_key, item_id)
     return min_price, total_available
 end
 
+-- Log cache usage to help spot approaching limits
+function log_search_cache_stats(prefix)
+    if not (ensure_search_cache() and search_cache.stats) then
+        aux.print('[Craft] Search cache unavailable')
+        return
+    end
+    local stats = search_cache.stats() or {}
+    local entries = stats.entries or 0
+    local auctions = stats.total_auctions or 0
+    local limit = search_cache.get_limit and search_cache.get_limit() or 0
+    local oldest = stats.oldest_age or 0
+    local oldest_text
+    if oldest > 0 then
+        if oldest < 60 then
+            oldest_text = format('%ds', oldest)
+        elseif oldest < 3600 then
+            oldest_text = format('%dm', math.floor(oldest / 60))
+        else
+            oldest_text = format('%dh', math.floor(oldest / 3600))
+        end
+    end
+    local label = prefix or '[Craft]'
+    aux.print(format('%s Cache entries: %d / %d, auctions: %d%s', label, entries, limit, auctions, oldest_text and (', oldest ' .. oldest_text .. ' ago') or ''))
+end
+
+-- Build and run a scan that includes all unique mats and outputs for this profession
+function scan_all_materials()
+    local recipes = craft_vendor.get_recipes() or {}
+    local mat_set = {}
+    local out_set = {}
+    local mat_list = {}
+    local out_list = {}
+    scan_all_targets = {}
+
+    for name, recipe in pairs(recipes) do
+        local crafted_name = crafted_search_name(recipe, name)
+        if crafted_name and crafted_name ~= '' and not out_set[crafted_name] then
+            out_set[crafted_name] = true
+            tinsert(out_list, crafted_name)
+            if recipe and recipe.output_id then
+                scan_all_targets[crafted_name .. '/exact'] = recipe.output_id
+            end
+        end
+        if recipe and recipe.materials then
+            for _, mat in ipairs(recipe.materials) do
+                local mname = strlower(mat.name)
+                if mname ~= '' and not mat_set[mname] then
+                    mat_set[mname] = true
+                    tinsert(mat_list, mname)
+                    scan_all_targets[mname .. '/exact'] = mat.item_id
+                end
+            end
+        end
+    end
+
+    table.sort(mat_list)
+    table.sort(out_list)
+
+    local filter_parts = {}
+    for _, name in ipairs(out_list) do
+        tinsert(filter_parts, name .. '/exact')
+    end
+    for _, name in ipairs(mat_list) do
+        tinsert(filter_parts, name .. '/exact')
+    end
+
+    local filter = table.concat(filter_parts, ';')
+    if filter == '' then
+        aux.print('[Craft] No recipes/materials to scan')
+        return
+    end
+
+    search_box:SetText(filter)
+    first_page_input:SetText('1')
+    last_page_input:SetText('')
+    aux.print(format('[Craft] Scan-all: %d recipes, %d outputs, %d materials', aux.size(recipes), getn(out_list), getn(mat_list)))
+    log_search_cache_stats('[Craft] Before scan-all')
+    execute_search()
+end
+
 -- Current scan state
 scan_id = 0
 scanning = false
@@ -107,6 +187,7 @@ real_time = false
 filter_string = nil  -- current search filter for caching
 recipe_stats = nil  -- per-recipe cached summary (ah price, mats cost, profit)
 recipe_stats_by_id = nil -- keyed by output_id
+scan_all_targets = nil -- map of filter key -> item_id for scan-all runs
 
 -- Flag to track if tab is open
 local tab_is_open = false
@@ -203,6 +284,7 @@ function execute_search(resume)
     
     local current_query = 0
     local total_queries = getn(queries)
+    local page_records = {}
     scan_id = scan.start{
         type = 'list',
         queries = queries,
@@ -221,6 +303,7 @@ function execute_search(resume)
             current_query = index or 1
         end,
         on_page_loaded = function(page_progress, total_scan_pages, last_page, actual_page)
+            page_records = {}
             local q = current_query > 0 and current_query or 1
             local tq = total_queries > 0 and total_queries or 1
             total_scan_pages = max(total_scan_pages or 1, 1)
@@ -238,6 +321,7 @@ function execute_search(resume)
         on_auction = function(auction_record)
             if auction_record.buyout_price > 0 then
                 tinsert(scan_results, auction_record)
+                tinsert(page_records, auction_record)
                 
                 -- Update display progressively (like Search tab)
                 results_listing:SetDatabase(scan_results)
@@ -266,7 +350,57 @@ function execute_search(resume)
                 update_material_listing()
             end
         end,
+        on_page_scanned = function()
+            if not (scan_filter and getn(scan_results) > 0) then return end
+            if not (ensure_search_cache() and search_cache.store) then return end
+
+            -- Store cumulative results so far for this filter (allows aborting mid-run and still reusing data)
+            search_cache.store(scan_filter, scan_results)
+
+            -- Build per-item buckets from the current page only for efficiency
+            local buckets = {}
+            local item_keys = {}
+
+            if selected_recipe then
+                if selected_recipe.output_id then
+                    local crafted_key = crafted_search_name(selected_recipe, selected_recipe_name) .. '/exact'
+                    buckets[crafted_key] = {}
+                    item_keys[crafted_key] = selected_recipe.output_id
+                end
+                if selected_recipe.materials then
+                    for _, mat in ipairs(selected_recipe.materials) do
+                        local key = strlower(mat.name) .. '/exact'
+                        buckets[key] = {}
+                        item_keys[key] = mat.item_id
+                    end
+                end
+            elseif scan_all_targets then
+                for key, item_id in pairs(scan_all_targets) do
+                    buckets[key] = {}
+                    item_keys[key] = item_id
+                end
+            end
+
+            if next(item_keys) then
+                for _, record in ipairs(page_records) do
+                    for key, target_id in pairs(item_keys) do
+                        if record.item_id == target_id then
+                            tinsert(buckets[key], record)
+                        end
+                    end
+                end
+                for key, records in pairs(buckets) do
+                    if getn(records) > 0 then
+                        search_cache.store(key, records)
+                    end
+                end
+            end
+
+            -- Refresh recipe list so Mats/AH/Profit reflect newly cached prices per page
+            update_recipe_listing()
+        end,
         on_complete = function()
+            local ran_scan_all = scan_all_targets ~= nil
             scanning = false
             search_continuation = nil
             status_bar:update_status(1, 1)
@@ -277,18 +411,17 @@ function execute_search(resume)
                 if ensure_search_cache() and search_cache.store then
                     search_cache.store(scan_filter, scan_results)
 
-                    -- Additionally store per-item entries so mats and outputs can be reused across recipes/tabs
-                    if selected_recipe then
-                        local buckets = {}
-                        local item_keys = {}
+                    -- Build per-item buckets either from the selected recipe or the scan-all target map
+                    local buckets = {}
+                    local item_keys = {}
 
+                    if selected_recipe then
                         -- Crafted item bucket
                         if selected_recipe.output_id then
                             local crafted_key = crafted_search_name(selected_recipe, selected_recipe_name) .. '/exact'
                             buckets[crafted_key] = {}
                             item_keys[crafted_key] = selected_recipe.output_id
                         end
-
                         -- Material buckets
                         if selected_recipe.materials then
                             for _, mat in ipairs(selected_recipe.materials) do
@@ -297,7 +430,14 @@ function execute_search(resume)
                                 item_keys[key] = mat.item_id
                             end
                         end
+                    elseif scan_all_targets then
+                        for key, item_id in pairs(scan_all_targets) do
+                            buckets[key] = {}
+                            item_keys[key] = item_id
+                        end
+                    end
 
+                    if next(item_keys) then
                         -- Partition scan results into buckets by item_id
                         for _, record in ipairs(scan_results) do
                             for key, target_id in pairs(item_keys) do
@@ -314,12 +454,22 @@ function execute_search(resume)
                             end
                         end
                     end
+
+                    -- Clear scan-all target map after use
+                    scan_all_targets = nil
                 end
             end
             
             update_search_display()
             update_material_listing()
             results_listing:SetDatabase(scan_results)
+
+            -- Refresh recipe list so AH Price / mats cost can reflect freshly cached data (e.g., after Scan All)
+            if ran_scan_all then
+                update_recipe_listing()
+            end
+
+            log_search_cache_stats('[Craft] Cache after complete')
         end,
         on_abort = function(continuation)
             scanning = false
@@ -333,6 +483,7 @@ function execute_search(resume)
             update_search_display()
             update_material_listing()
             results_listing:SetDatabase(scan_results)
+            log_search_cache_stats('[Craft] Cache after stop')
         end,
     }
 end

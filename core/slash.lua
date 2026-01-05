@@ -224,11 +224,12 @@ function SlashCmdList.AUX(command)
 				aux.realm_data.craft_recipe_stats = {}
 				aux.realm_data.craft_recipe_stats_by_id = {}
 				aux.realm_data.craft_material_prices = {}
+				aux.realm_data.craft_material_prices_global = {}
 			end
 			if profession_scanner and profession_scanner.clear_cache then
 				profession_scanner.clear_cache()
 			end
-			aux.print('[Craft] Recipe stats and material cache cleared')
+			aux.print('[Craft] Search cache cleared; craft stats reset')
 		elseif arguments[2] == 'debug' then
 			search_cache.debug()
 		elseif arguments[2] == 'limit' then

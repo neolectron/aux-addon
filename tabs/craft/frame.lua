@@ -216,6 +216,21 @@ function aux.handle.INIT_UI()
         GameTooltip:Hide()
     end)
 
+    -- Scan-all button below recipe list
+    do
+        local btn = gui.button(frame, gui.font_size.large)
+        btn:SetPoint('TOPLEFT', frame.recipes, 'BOTTOMLEFT', 0, -4)
+        btn:SetPoint('TOPRIGHT', frame.recipes, 'BOTTOMRIGHT', 0, -4)
+        btn:SetHeight(22)
+        btn:SetBackdropColor(0.7, 0.1, 0.1, 0.9)
+        btn:SetText('Scan All Mats')
+        btn:SetScript('OnClick', function()
+            log_search_cache_stats('[Craft] Cache')
+            scan_all_materials()
+        end)
+        scan_all_button = btn
+    end
+
     -- Right side: Profit info at bottom, results fill the rest
     -- Profit info panel (bottom right, above status bar)
     frame.profit_info = CreateFrame('Frame', nil, frame)
