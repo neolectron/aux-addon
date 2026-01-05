@@ -197,7 +197,6 @@ function execute_search(resume)
             if scan_filter and getn(scan_results) > 0 then
                 if search_cache and search_cache.store then
                     search_cache.store(scan_filter, scan_results)
-                    aux.print('DEBUG: Cached ' .. getn(scan_results) .. ' auctions for filter: ' .. scan_filter)
                 end
             end
             
@@ -250,14 +249,7 @@ function get_recipe_list()
     -- (Lua 5.0 doesn't support __pairs metamethod, so metatable iteration doesn't work)
     local all_recipes = craft_vendor.get_recipes()
     
-    -- Debug: Check what recipes are available
     local recipe_count = aux.size(all_recipes)
-    
-    if recipe_count == 0 then
-        aux.print('DEBUG: get_recipes returned 0 recipes')
-    else
-        aux.print(format('DEBUG: get_recipes returned %d recipes', recipe_count))
-    end
     
     for name, recipe in pairs(all_recipes) do
         local vendor_price = recipe.vendor_price or 1  -- Default to 1 copper if nil
@@ -465,11 +457,21 @@ function scan_recipe_materials(recipe_name, recipe_obj)
             material_prices[item_id] = { min_price = price_data.price, count = price_data.count }
             cached_count = cached_count + 1
         end
-        aux.print('DEBUG: Loaded ' .. cached_count .. ' cached prices for ' .. profession)
-    else
-        aux.print('DEBUG: No cached prices for ' .. profession)
+        -- cached prices loaded
     end
     
+    -- Helper: pick a stable search name (prefer crafted item name)
+    local function recipe_search_name(r)
+        if r and r.output_id then
+            local item_info = info.item(r.output_id)
+            if item_info and item_info.name then
+                return strlower(item_info.name)
+            end
+        end
+        return strlower(recipe_name)
+    end
+    local crafted_search_name = recipe_search_name(recipe)
+
     -- Load cached auction records from search_cache for instant display
     if not search_cache then
         local success, module = pcall(require, 'aux.core.search_cache')
@@ -481,7 +483,7 @@ function scan_recipe_materials(recipe_name, recipe_obj)
     if search_cache and search_cache.get then
         -- Build the same filter string that will be used for the search
         local filter_parts = {}
-        tinsert(filter_parts, strlower(recipe_name) .. '/exact')
+        tinsert(filter_parts, crafted_search_name .. '/exact')
         if recipe.materials then
             for _, mat in ipairs(recipe.materials) do
                 tinsert(filter_parts, strlower(mat.name) .. '/exact')
@@ -506,7 +508,6 @@ function scan_recipe_materials(recipe_name, recipe_obj)
                 end
             end
             results_listing:SetDatabase(scan_results)
-            aux.print('DEBUG: Loaded ' .. getn(scan_results) .. ' cached auction records')
         else
             scan_results = {}
         end
@@ -521,7 +522,7 @@ function scan_recipe_materials(recipe_name, recipe_obj)
     local filter_parts = {}
     
     -- Add the crafted item first (so icon loads)
-    tinsert(filter_parts, strlower(recipe_name) .. '/exact')
+    tinsert(filter_parts, crafted_search_name .. '/exact')
     
     -- Add all materials
     if recipe.materials then
