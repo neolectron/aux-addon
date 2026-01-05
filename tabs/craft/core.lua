@@ -334,6 +334,10 @@ recipe_stats_by_id = nil -- keyed by output_id
 scan_all_targets = nil -- map of filter key -> item_id for scan-all runs
 show_only_craftable = false  -- filter to show only recipes with sufficient materials
 
+-- Persistent inventory cache for performance
+local inventory_cache = nil
+local inventory_cache_dirty = true  -- initially dirty, rebuild on first use
+
 -- Flag to track if tab is open
 local tab_is_open = false
 
@@ -352,9 +356,25 @@ end
 recipe_stats = realm_data.craft_recipe_stats
 recipe_stats_by_id = realm_data.craft_recipe_stats_by_id
 
+-- Invalidate the inventory cache (mark as dirty)
+function invalidate_inventory_cache()
+    inventory_cache_dirty = true
+end
+
+-- Get or build the inventory cache on-demand
+function get_or_build_inventory_cache()
+    if inventory_cache_dirty or not inventory_cache then
+        inventory_cache = build_inventory_cache()
+        inventory_cache_dirty = false
+    end
+    return inventory_cache
+end
+
 function tab.OPEN()
     frame:Show()
     tab_is_open = true
+    -- Rebuild inventory cache on tab open (player may have moved items)
+    invalidate_inventory_cache()
     update_recipe_listing()
     update_search_display()
     update_cache_status()
@@ -698,6 +718,7 @@ function execute_search(resume)
 
             -- Refresh recipe list so AH Price / mats cost can reflect freshly cached data (e.g., after Scan All)
             if ran_scan_all then
+                invalidate_inventory_cache()
                 update_recipe_listing()
             end
 
@@ -764,8 +785,8 @@ function get_recipe_list()
     
     local recipe_count = aux.size(all_recipes)
     
-    -- Build inventory cache once for efficient filtering
-    local inventory_cache = show_only_craftable and build_inventory_cache() or nil
+    -- Use persistent cached inventory for efficient filtering
+    local inventory_cache = show_only_craftable and get_or_build_inventory_cache() or nil
     
     for name, recipe in pairs(all_recipes) do
         local vendor_price = recipe.vendor_price or 1  -- Default to 1 copper if nil
@@ -796,8 +817,8 @@ function update_recipe_listing()
     local rows = T.acquire()
     local recipes = get_recipe_list()
     
-    -- Build inventory cache once for use in missing mats calculation
-    local inventory_cache = build_inventory_cache()
+    -- Use cached inventory instead of building it again
+    local inventory_cache = get_or_build_inventory_cache()
     
     for i, r in ipairs(recipes) do
         local name_display = r.is_safe and aux.color.green(r.name) or r.name
@@ -1085,6 +1106,9 @@ function scan_recipe_materials(recipe_name, recipe_obj)
     selected_recipe = recipe
     selected_recipe_name = recipe_name
     clear_missing_flags(recipe)
+    
+    -- Invalidate inventory cache since user might have crafted/bought items since last check
+    invalidate_inventory_cache()
     
     -- Clear old results immediately for instant visual feedback
     scan.abort(scan_id)
