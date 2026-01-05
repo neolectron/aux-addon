@@ -188,7 +188,11 @@ do
 			thread(when, signal_received, function()
 				-- Track ALL buyout purchases for profit tracking (both manual and auto-buy)
 				if name and amount > 0 and amount >= buyout_price then
-					purchase_summary.add_purchase(name, texture, count, amount, item_id)
+					local track_vendor_profit = false
+					if aux and aux.current_search and aux.current_search().filter_string and string.find(aux.current_search().filter_string, '/vendor%-profit') then
+						track_vendor_profit = true
+					end
+					purchase_summary.add_purchase(name, texture, count, amount, item_id, track_vendor_profit)
 					purchase_summary.update_display()
 					-- Print buyout message with price
 					local count_str = count > 1 and (count .. "x ") or ""

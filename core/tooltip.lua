@@ -71,22 +71,15 @@ function M.extend_tooltip(tooltip, link, quantity)
         end
     end
     if settings.merchant_buy then
-        local _, price, limited = info.merchant_info(item_id)
+        local price = info.get_vendor_price(item_id, quantity)
         if price then
-            tooltip:AddLine('Vendor Buy ' .. (limited and '(limited): ' or ': ') .. money.to_string2(price * quantity), aux.color.tooltip.merchant())
+            tooltip:AddLine('Vendor Buy: ' .. money.to_string2(price * quantity), aux.color.tooltip.merchant())
         end
     end
     if settings.merchant_sell then
-        local price = info.merchant_info(item_id)
-		if price == nil and ShaguTweaks and ShaguTweaks.SellValueDB[item_id] ~= nil then
-			local charges = 1
-			if info.max_item_charges(item_id) ~= nil then 
-				charges=info.max_item_charges(item_id) 
-			end
-			price = ShaguTweaks.SellValueDB[item_id] / charges
-		end
-        if price ~= 0 then
-            tooltip:AddLine('Vendor: ' .. (price and money.to_string2(price * quantity) or UNKNOWN), aux.color.tooltip.merchant())
+        local price = info.get_vendor_price(item_id, quantity)
+        if price and price ~= 0 then
+            tooltip:AddLine('Vendor: ' .. money.to_string2(price * quantity), aux.color.tooltip.merchant())
         end
         -- Show vendor profit potential compared to market value
         if price and price > 0 then

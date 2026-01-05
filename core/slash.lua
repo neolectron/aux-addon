@@ -221,18 +221,21 @@ function SlashCmdList.AUX(command)
 			search_cache.clear()
 		elseif arguments[2] == 'debug' then
 			search_cache.debug()
+		elseif arguments[2] == 'limit' then
+			local new_limit = tonumber(arguments[3])
+			search_cache.set_limit(new_limit)
 		else
 			-- Show cache status
 			local stats = search_cache.stats()
 			aux.print(aux.color.gold('=== Search Cache Stats ==='))
-			aux.print(format('Cached searches: %d', stats.entries))
+			aux.print(format('Cached searches: %d / %d max', stats.entries, search_cache.get_limit()))
 			aux.print(format('Total auctions cached: %d', stats.total_auctions))
 			if stats.oldest_age > 0 then
 				local age_min = math.floor(stats.oldest_age / 60)
 				aux.print(format('Oldest entry: %dm ago', age_min))
 			end
 			aux.print(' ')
-			aux.print('Commands: cache clear | cache debug')
+			aux.print('Commands: cache clear | cache debug | cache limit [N]')
 		end
 	else
 		aux.print('Usage:')

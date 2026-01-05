@@ -178,17 +178,45 @@ function scan_page(i)
 		
 		history.process_auction(auction_info, pages)
 		
-		if (get_state().params.auto_buy_validator or pass)(auction_info) and auction_info.buyout_price >0 and auction_info.owner ~= UnitName("player") then
-			-- Instant buy: place bid and continue scanning immediately (don't wait)
-			local success, reason = aux.place_bid(auction_info.query_type, auction_info.index, auction_info.buyout_price, pass, true)
-			if success then
-				-- Play alert sound for auto-buy deal found
-				PlaySound("LEVELUP")
-				aux.print(aux.color.green("AUTO-BUY: ") .. (auction_info.name or "item") .. " for " .. money.to_string(auction_info.buyout_price, true))
-			elseif reason == 'gold' then
-				aux.print(aux.color.red("AUTO-BUY SKIPPED (not enough gold): ") .. (auction_info.name or "item"))
+		-- Use centralized vendor price helper
+		
+
+-- Check if buying at a specific price would be vendor-profitable
+local function is_vendor_profitable(record, price)
+    if not price or price <= 0 then return false end
+    local vendor_price = info.get_vendor_price(record.item_id, record.aux_quantity)
+    if vendor_price and vendor_price > 0 then
+        return vendor_price * record.aux_quantity - price >= 0
+    end
+    -- If no vendor price known, allow (other filters may apply)
+    return true
+end
+		
+		-- Auto-buy logic: buy at buyout if profitable, else try bid if profitable
+		if (get_state().params.auto_buy_validator or pass)(auction_info) and auction_info.owner ~= UnitName("player") then
+			local buyout_profitable = auction_info.buyout_price > 0 and is_vendor_profitable(auction_info, auction_info.buyout_price)
+			local bid_profitable = auction_info.high_bidder == nil and is_vendor_profitable(auction_info, auction_info.bid_price)
+			
+			if buyout_profitable then
+				-- Buyout is profitable - instant buy
+				local success, reason = aux.place_bid(auction_info.query_type, auction_info.index, auction_info.buyout_price, pass, true)
+				if success then
+					PlaySound("LEVELUP")
+					aux.print(aux.color.green("AUTO-BUY: ") .. (auction_info.name or "item") .. " for " .. money.to_string(auction_info.buyout_price, true))
+				elseif reason == 'gold' then
+					aux.print(aux.color.red("AUTO-BUY SKIPPED (not enough gold): ") .. (auction_info.name or "item"))
+				end
+			elseif bid_profitable then
+				-- Buyout not profitable, but bid is - place bid instead
+				local success, reason = aux.place_bid(auction_info.query_type, auction_info.index, auction_info.bid_price, pass, false)
+				if success then
+					PlaySound("igQuestListOpen")
+					aux.print(aux.color.blue("AUTO-BID (buyout unprofitable): ") .. (auction_info.name or "item") .. " for " .. money.to_string(auction_info.bid_price, true))
+				elseif reason == 'gold' then
+					aux.print(aux.color.red("AUTO-BID SKIPPED (not enough gold): ") .. (auction_info.name or "item"))
+				end
 			end
-			-- Continue to next auction without waiting (even if skipped)
+			-- If neither profitable, skip silently
 		elseif (get_state().params.auto_bid_validator or pass)(auction_info) and auction_info.owner ~= UnitName("player") and auction_info.high_bidder == nil then
 			-- Instant bid: place bid and continue scanning immediately (don't wait)
 			local success, reason = aux.place_bid(auction_info.query_type, auction_info.index, auction_info.bid_price, pass, false)
@@ -243,7 +271,8 @@ function accept_results()
 		(get_state().params.on_page_loaded or pass)(
 			current,
 			total_display,
-			total_pages(get_state().total_auctions) - 1
+			total_pages(get_state().total_auctions) - 1,
+			get_state().page + 1  -- actual AH page number (1-based for display)
 		)
 	end
 	return scan_page()

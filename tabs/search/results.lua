@@ -24,13 +24,23 @@ function update_real_time(enable)
 		real_time_button:Show()
 		search_box:ClearAllPoints()
 		search_box:SetPoint('LEFT', real_time_button, 'RIGHT', gui.is_blizzard() and 8 or 4, 0)
-		search_box:SetPoint('RIGHT', reverse_checkbox, 'LEFT', -30, 0)
+		-- Anchor to resume_button if visible, otherwise reverse_checkbox
+		if current_search().continuation then
+			search_box:SetPoint('RIGHT', resume_button, 'LEFT', -4, 0)
+		else
+			search_box:SetPoint('RIGHT', reverse_checkbox, 'LEFT', -4, 0)
+		end
 	else
 		real_time_button:Hide()
 		range_button:Show()
 		search_box:ClearAllPoints()
 		search_box:SetPoint('LEFT', last_page_input, 'RIGHT', gui.is_blizzard() and 8 or 4, 0)
-		search_box:SetPoint('RIGHT', reverse_checkbox, 'LEFT', -30, 0)
+		-- Anchor to resume_button if visible, otherwise reverse_checkbox
+		if current_search().continuation then
+			search_box:SetPoint('RIGHT', resume_button, 'LEFT', -4, 0)
+		else
+			search_box:SetPoint('RIGHT', reverse_checkbox, 'LEFT', -4, 0)
+		end
 	end
 end
 
@@ -222,7 +232,7 @@ function update_continuation()
 		search_box:SetPoint('RIGHT', resume_button, 'LEFT', -4, 0)
 	else
 		resume_button:Hide()
-		search_box:SetPoint('RIGHT', start_button, 'LEFT', -4, 0)
+		search_box:SetPoint('RIGHT', reverse_checkbox, 'LEFT', -4, 0)
 	end
 end
 
@@ -349,16 +359,30 @@ function start_search(queries, continuation, reverse)
 				search.status_bar:set_text('Scanning auctions...')
 			end
 		end,
-		on_page_loaded = function(page_progress, total_scan_pages)
+		on_page_loaded = function(page_progress, total_scan_pages, last_page, actual_page)
 			current_page = page_progress + (start_page - 1)
 			total_scan_pages = total_scan_pages + (start_page - 1)
 			total_scan_pages = max(total_scan_pages, 1)
 			current_page = min(current_page, total_scan_pages)
 			search.status_bar:update_status((current_query - 1) / getn(queries), current_page / total_scan_pages)
-			search.status_bar:set_text(format('Scanning %d / %d (Page %d / %d)', current_query, total_queries, current_page, total_scan_pages))
+			-- Use actual_page for display (shows real AH page number)
+			local display_page = actual_page or current_page
+			local display_total = (last_page or 0) + 1
+			-- Hide query progress if only 1 query
+			if total_queries == 1 then
+				search.status_bar:set_text(format('Scanning page %d / %d', display_page, display_total))
+			else
+				search.status_bar:set_text(format('Scanning %d / %d (Page %d / %d)', current_query, total_queries, display_page, display_total))
+			end
 		end,
 		on_page_scanned = function()
 			search.table:SetDatabase()
+			-- Progressive caching: update cache after each page
+			if search.filter_string and getn(search.records) > 0 then
+				if search_cache and search_cache.store then
+					search_cache.store(search.filter_string, search.records)
+				end
+			end
 		end,
 		on_start_query = function(query)
 			current_query = current_query and current_query + 1 or start_query
@@ -474,6 +498,20 @@ function M.execute(resume, real_time)
 	update_start_stop()
 	clear_control_focus()
 	set_subtab(RESULTS)
+	
+	-- Step 2: Check cache and show stale data immediately while fresh data loads
+	if not resume and not real_time and search_cache then
+		local cached, age = search_cache.get(filter_string)
+		if cached and cached.auctions and getn(cached.auctions) > 0 then
+			local search = current_search()
+			-- Populate with cached data immediately
+			for _, cached_auction in ipairs(cached.auctions) do
+				tinsert(search.records, cached_auction)
+			end
+			search.table:SetDatabase(search.records)
+		end
+	end
+	
 	if real_time then
 		start_real_time_scan(queries[1], nil, continuation)
 	else

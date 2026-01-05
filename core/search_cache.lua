@@ -5,16 +5,19 @@ module 'aux.core.search_cache'
 
 local T = require 'T'
 
--- Debug: confirm module is loading
-DEFAULT_CHAT_FRAME:AddMessage('[SearchCache] Module file executing...')
-
--- Cache configuration
+-- Cache configuration defaults
+local DEFAULT_MAX_ENTRIES = 50
 local CACHE_TTL = 30 * 60  -- 30 minutes default TTL
-local MAX_CACHE_ENTRIES = 50  -- Maximum number of cached searches
 
 -- Get aux reference lazily (avoid require at module load time)
 local function get_aux()
     return require 'aux'
+end
+
+-- Get configured max entries (from account_data or default)
+local function get_max_entries()
+    local aux = get_aux()
+    return aux.account_data.search_cache_max_entries or DEFAULT_MAX_ENTRIES
 end
 
 -- Lazy initialization - ensures cache exists
@@ -66,6 +69,8 @@ local function prune()
     local cache = ensure_cache()
     if not cache then return end
     
+    local max_entries = get_max_entries()
+    
     -- Count entries
     local entries = {}
     for key, data in pairs(cache) do
@@ -73,18 +78,16 @@ local function prune()
     end
     
     -- If under limit, no pruning needed
-    if getn(entries) <= MAX_CACHE_ENTRIES then return end
+    if getn(entries) <= max_entries then return end
     
     -- Sort by timestamp (oldest first)
     table.sort(entries, function(a, b) return a.timestamp < b.timestamp end)
     
     -- Remove oldest entries until under limit
-    local to_remove = getn(entries) - MAX_CACHE_ENTRIES
+    local to_remove = getn(entries) - max_entries
     for i = 1, to_remove do
         cache[entries[i].key] = nil
     end
-    
-    aux.print(format('[SearchCache] Pruned %d old entries', to_remove))
 end
 
 local function stats()
@@ -126,24 +129,38 @@ local function store(filter_string, records)
     -- Serialize minimal auction data (not full records - too large)
     local cached_auctions = {}
     for i, record in ipairs(records) do
-        -- Store only essential fields for display
+        -- Store essential fields for display, sorting, and tooltips
         tinsert(cached_auctions, {
+            -- Core identifiers
             item_key = record.item_key,
-            name = record.name,
-            texture = record.texture,
-            aux_quantity = record.aux_quantity,
-            buyout_price = record.buyout_price,
-            unit_buyout_price = record.unit_buyout_price,
-            bid_price = record.bid_price,
-            unit_bid_price = record.unit_bid_price,
-            owner = record.owner,
-            duration = record.duration,
-            quality = record.quality,
-            level = record.level,
+            search_signature = record.search_signature,
             item_id = record.item_id,
             suffix_id = record.suffix_id,
             enchant_id = record.enchant_id,
             unique_id = record.unique_id,
+            
+            -- Display fields
+            link = record.link,
+            itemstring = record.itemstring,
+            name = record.name,
+            texture = record.texture,
+            quality = record.quality,
+            level = record.level,
+            
+            -- Quantity and pricing
+            aux_quantity = record.aux_quantity,
+            count = record.count,
+            buyout_price = record.buyout_price,
+            unit_buyout_price = record.unit_buyout_price,
+            bid_price = record.bid_price,
+            unit_bid_price = record.unit_bid_price,
+            start_price = record.start_price,
+            high_bid = record.high_bid,
+            high_bidder = record.high_bidder,
+            
+            -- Metadata
+            owner = record.owner,
+            duration = record.duration,
         })
         -- Limit stored auctions per search
         if i >= 500 then break end
@@ -158,8 +175,6 @@ local function store(filter_string, records)
     
     -- Prune old entries if cache is too large
     prune()
-    
-    aux.print(format('[SearchCache] Stored %d auctions for "%s"', getn(cached_auctions), filter_string))
 end
 
 local function is_stale(filter_string, ttl)
@@ -191,6 +206,18 @@ local function debug()
     end
 end
 
+local function set_limit(limit)
+    local aux = get_aux()
+    if limit and limit > 0 then
+        aux.account_data.search_cache_max_entries = limit
+        aux.print(format('[SearchCache] Max entries set to %d', limit))
+        -- Prune immediately if over new limit
+        prune()
+    else
+        aux.print(format('[SearchCache] Current limit: %d searches', get_max_entries()))
+    end
+end
+
 -- Export functions to module interface
 M.normalize_key = normalize_key
 M.store = store
@@ -201,3 +228,5 @@ M.prune = prune
 M.clear = clear
 M.stats = stats
 M.debug = debug
+M.set_limit = set_limit
+M.get_limit = get_max_entries

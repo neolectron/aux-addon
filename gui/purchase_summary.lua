@@ -25,38 +25,23 @@ function M.clear_summaries()
 	session_start_time = nil
 end
 
--- Get vendor price for an item (handles charges for items like wands)
-local function get_vendor_price(item_id)
-	local vendor_price = info.merchant_info(item_id)
-	if not vendor_price and ShaguTweaks then
-		vendor_price = ShaguTweaks.SellValueDB[item_id]
-		if vendor_price then
-			local charges = info.max_item_charges(item_id)
-			if charges then
-				vendor_price = vendor_price / charges
-			end
-		end
-	end
-	return vendor_price
-end
+
 
 -- Save profit to persistent storage with timestamp and item stats
-local function save_profit(cost, vendor_value, quantity, item_id, item_name)
+local function save_profit(cost, vendor_value, quantity, item_id, item_name, track_vendor_profit)
 	if not aux.character_data or not aux.character_data.profit_history then return end
 	local history = aux.character_data.profit_history
 	local current_time = time()
-	
-	history.total_spent = (history.total_spent or 0) + cost
-	history.total_vendor_value = (history.total_vendor_value or 0) + vendor_value
-	history.total_items = (history.total_items or 0) + quantity
-	
-	-- Track time for gold/hour calculation
-	if not history.first_purchase_time then
-		history.first_purchase_time = current_time
+	if track_vendor_profit then
+		history.total_spent = (history.total_spent or 0) + cost
+		history.total_vendor_value = (history.total_vendor_value or 0) + vendor_value
+		history.total_items = (history.total_items or 0) + quantity
+		if not history.first_purchase_time then
+			history.first_purchase_time = current_time
+		end
+		history.last_purchase_time = current_time
 	end
-	history.last_purchase_time = current_time
-	
-	-- Track per-item statistics
+	-- Track per-item statistics (optional: could also restrict to vendor-profit if desired)
 	if item_id and item_name then
 		history.item_stats = history.item_stats or {}
 		local item_key = tostring(item_id)
@@ -193,7 +178,7 @@ function M.print_top_items(limit)
 	end
 end
 
-function M.add_purchase(name, texture, quantity, cost, item_id)
+function M.add_purchase(name, texture, quantity, cost, item_id, track_vendor_profit)
 	if not name then return end
 
 	-- Start session timer on first purchase
@@ -215,21 +200,21 @@ function M.add_purchase(name, texture, quantity, cost, item_id)
 
 	local qty = quantity or 0
 	local item_cost = cost or 0
-	
+    
 	purchase_summaries[name].total_quantity = purchase_summaries[name].total_quantity + qty
 	purchase_summaries[name].total_cost = purchase_summaries[name].total_cost + item_cost
 	purchase_summaries[name].purchase_count = purchase_summaries[name].purchase_count + 1
-	
+    
 	-- Track vendor value for profit calculation
 	local vendor_value = 0
 	if item_id then
 		purchase_summaries[name].item_id = item_id
-		local vendor_price = get_vendor_price(item_id)
+		local vendor_price = info.get_vendor_price(item_id, qty)
 		if vendor_price then
 			vendor_value = vendor_price * qty
 			purchase_summaries[name].total_vendor_value = purchase_summaries[name].total_vendor_value + vendor_value
 		end
-		
+        
 		-- Track for craft-to-vendor system - check if material is for a recipe
 		if craft_vendor and craft_vendor.material_to_recipes and craft_vendor.material_to_recipes[item_id] then
 			-- This is a craft material! Use on_material_bought for notifications
@@ -239,9 +224,9 @@ function M.add_purchase(name, texture, quantity, cost, item_id)
 			craft_vendor.add_to_session(item_id, name, qty, item_cost)
 		end
 	end
-	
+    
 	-- Save to persistent storage (including per-item stats)
-	save_profit(item_cost, vendor_value, qty, item_id, name)
+	save_profit(item_cost, vendor_value, qty, item_id, name, track_vendor_profit)
 end
 
 local ROW_HEIGHT = 14
@@ -275,37 +260,10 @@ function create_purchase_summary_frame()
 	title:SetTextColor(aux.color.label.enabled())
 	purchase_summary_frame.title = title
 
-	-- Session g/h (line 1)
-	local session_gph_text = purchase_summary_frame:CreateFontString(nil, 'OVERLAY', 'GameFontNormalSmall')
-	session_gph_text:SetPoint('TOPLEFT', title, 'BOTTOMLEFT', 0, -8)
-	session_gph_text:SetJustifyH('LEFT')
-	session_gph_text:SetTextColor(0.7, 0.7, 0.7) -- Gray
-	purchase_summary_frame.session_gph_text = session_gph_text
-
-	-- Session profit (line 2)
-	local session_label = purchase_summary_frame:CreateFontString(nil, 'OVERLAY', 'GameFontNormalSmall')
-	session_label:SetPoint('TOPLEFT', session_gph_text, 'BOTTOMLEFT', 0, -2)
-	session_label:SetText('Session:')
-	session_label:SetTextColor(aux.color.label.enabled())
-	purchase_summary_frame.session_label = session_label
-
-	local session_profit_text = purchase_summary_frame:CreateFontString(nil, 'OVERLAY', 'GameFontNormalSmall')
-	session_profit_text:SetPoint('LEFT', session_label, 'RIGHT', 5, 0)
-	session_profit_text:SetJustifyH('LEFT')
-	session_profit_text:SetTextColor(0, 1, 0) -- Green
-	purchase_summary_frame.session_profit_text = session_profit_text
-
-	-- All-time g/h (line 3)
-	local alltime_gph_text = purchase_summary_frame:CreateFontString(nil, 'OVERLAY', 'GameFontNormalSmall')
-	alltime_gph_text:SetPoint('TOPLEFT', session_label, 'BOTTOMLEFT', 0, -6)
-	alltime_gph_text:SetJustifyH('LEFT')
-	alltime_gph_text:SetTextColor(0.7, 0.7, 0.7) -- Gray
-	purchase_summary_frame.alltime_gph_text = alltime_gph_text
-
-	-- All-time profit (line 4)
+	-- All-time vendor profit (top line)
 	local alltime_label = purchase_summary_frame:CreateFontString(nil, 'OVERLAY', 'GameFontNormalSmall')
-	alltime_label:SetPoint('TOPLEFT', alltime_gph_text, 'BOTTOMLEFT', 0, -2)
-	alltime_label:SetText('All-Time:')
+	alltime_label:SetPoint('TOPLEFT', title, 'BOTTOMLEFT', 0, -8)
+	alltime_label:SetText('All-Time Vendor Profit:')
 	alltime_label:SetTextColor(aux.color.label.enabled())
 	purchase_summary_frame.alltime_label = alltime_label
 
@@ -411,28 +369,8 @@ function M.update_display()
 	end
 	local session_profit = total_vendor - total_spent
 
-	-- Session gold/hour (shown above the session label)
-	local session_gph = get_session_gold_per_hour()
-	local session_gph_gold = math.floor(session_gph / 10000)
-	frame.session_gph_text:SetText('Session Rate: ' .. session_gph_gold .. 'g/h')
-	frame.session_gph_text:Show()
 
-	-- Update session profit display
-	if session_profit ~= 0 then
-		local profit_string = money.to_string(math.abs(session_profit), nil, true)
-		if session_profit > 0 then
-			frame.session_profit_text:SetText('+' .. profit_string)
-			frame.session_profit_text:SetTextColor(0, 1, 0) -- Green
-		else
-			frame.session_profit_text:SetText('-' .. profit_string)
-			frame.session_profit_text:SetTextColor(1, 0, 0) -- Red
-		end
-	else
-		frame.session_profit_text:SetText('+0')
-	end
-	frame.session_profit_text:Show()
-
-	-- Update all-time profit display
+	-- Update all-time vendor profit display
 	local alltime_spent, alltime_vendor = get_alltime_profit()
 	local alltime_profit = alltime_vendor - alltime_spent
 	if alltime_profit ~= 0 then
@@ -449,12 +387,6 @@ function M.update_display()
 		frame.alltime_profit_text:SetTextColor(1, 0.82, 0) -- Gold
 	end
 	frame.alltime_profit_text:Show()
-
-	-- All-time gold/hour (shown above the all-time label)
-	local alltime_gph = get_gold_per_hour()
-	local gph_gold = math.floor(alltime_gph / 10000)
-	frame.alltime_gph_text:SetText('All-Time Rate: ' .. gph_gold .. 'g/h')
-	frame.alltime_gph_text:Show()
 
 	-- Clear existing row frames
 	for _, row in frame.rows do

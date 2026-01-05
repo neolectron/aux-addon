@@ -186,15 +186,8 @@ M.filters = {
         input_type = 'money',
         validator = function(amount)
             return function(auction_record)
-                local vendor_price = info.merchant_info(auction_record.item_id)
-				if not vendor_price and ShaguTweaks then 
-				    vendor_price = ShaguTweaks.SellValueDB[auction_record.item_id]
-					if vendor_price then 
-						local charges = info.max_item_charges(auction_record.item_id) or 1
-						vendor_price = vendor_price / charges 
-					end
-				end
-				-- Must have positive vendor price, must profit >= amount
+                local vendor_price = info.get_vendor_price(auction_record.item_id, auction_record.aux_quantity)
+                -- Must have positive vendor price, must profit >= amount
                 return vendor_price and vendor_price > 0 and vendor_price * auction_record.aux_quantity - auction_record.bid_price >= amount
             end
         end
@@ -204,15 +197,8 @@ M.filters = {
         input_type = 'money',
         validator = function(amount)
             return function(auction_record)
-                local vendor_price = info.merchant_info(auction_record.item_id)
-				if not vendor_price and ShaguTweaks then 
-				    vendor_price = ShaguTweaks.SellValueDB[auction_record.item_id]
-					if vendor_price then 
-						local charges = info.max_item_charges(auction_record.item_id) or 1
-						vendor_price = vendor_price / charges 
-					end
-				end
-				-- Must have buyout, must have positive vendor price, must profit >= amount
+                local vendor_price = info.get_vendor_price(auction_record.item_id, auction_record.aux_quantity)
+                -- Must have buyout, must have positive vendor price, must profit >= amount
                 return auction_record.buyout_price > 0 and vendor_price and vendor_price > 0 and vendor_price * auction_record.aux_quantity - auction_record.buyout_price >= amount
             end
         end
@@ -250,11 +236,8 @@ M.filters = {
 		input_type = '',
 		validator = function()
 			return function(auction_record)
-				local vendor_price = info.merchant_info(auction_record.item_id)
-				if not vendor_price and ShaguTweaks then
-					vendor_price = ShaguTweaks.SellValueDB[auction_record.item_id]
-				end
-				return vendor_price and vendor_price > 0
+                local vendor_price = info.get_vendor_price(auction_record.item_id, auction_record.aux_quantity)
+                return vendor_price and vendor_price > 0
 			end
 		end
 	},

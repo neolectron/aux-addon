@@ -77,25 +77,6 @@ function aux.handle.INIT_UI()
         real_time_button = btn
     end
     do
-        local checkbox = gui.checkbox(frame)
-        checkbox:SetPoint('RIGHT', start_button, 'LEFT', -25, 0)
-        checkbox:SetWidth(16)
-        checkbox:SetHeight(16)
-        checkbox:SetScript('OnClick', function()
-            if this:GetChecked() then
-                PlaySound('igMainMenuOptionCheckBoxOn')
-            else
-                PlaySound('igMainMenuOptionCheckBoxOff')
-            end
-        end)
-        local label = gui.label(checkbox, gui.font_size.small)
-        label:SetPoint('RIGHT', checkbox, 'LEFT', -2, 0)
-        label:SetText('Rev')
-        label:SetTextColor(aux.color.label.enabled())
-        checkbox.label = label
-        reverse_checkbox = checkbox
-    end
-    do
         local function change()
             local page = tonumber(this:GetText())
             local valid_input = page and tostring(max(1, page)) or ''
@@ -157,6 +138,35 @@ function aux.handle.INIT_UI()
         start_button = btn
     end
     do
+        -- "R" toggle button for reverse scan order
+        local btn = gui.button(frame)
+        btn:SetWidth(20)
+        btn:SetHeight(25)
+        btn:SetPoint('RIGHT', start_button, 'LEFT', -4, 0)
+        btn:SetText('R')
+        btn:SetScript('OnClick', function()
+            local checked = not btn.IsChecked
+            btn.IsChecked = checked
+            if checked then
+                btn:LockHighlight()
+            else
+                btn:UnlockHighlight()
+            end
+        end)
+        btn.SetChecked = function(self, v)
+            self.IsChecked = v
+            if v then
+                self:LockHighlight()
+            else
+                self:UnlockHighlight()
+            end
+        end
+        btn.GetChecked = function(self)
+            return self.IsChecked
+        end
+        reverse_checkbox = btn
+    end
+    do
         local btn = gui.button(frame)
         btn:SetHeight(25)
         btn:SetPoint('TOPRIGHT', -5, -8)
@@ -169,7 +179,7 @@ function aux.handle.INIT_UI()
     do
         local btn = gui.button(frame)
         btn:SetHeight(25)
-        btn:SetPoint('RIGHT', start_button, 'LEFT', -4, 0)
+        btn:SetPoint('RIGHT', reverse_checkbox, 'LEFT', -4, 0)
         btn:SetBackdropColor(aux.color.state.enabled())
         btn:SetText('Resume')
         btn:SetScript('OnClick', function()
@@ -201,28 +211,13 @@ function aux.handle.INIT_UI()
         search_box = editbox
     end
     do
-        local checkbox = gui.checkbox(frame)
-        checkbox:SetPoint('RIGHT', resume_button, 'LEFT', -8, 0)
-        checkbox:SetWidth(16)
-        checkbox:SetHeight(16)
-        checkbox:SetScript('OnClick', function()
-            if this:GetChecked() then
-                PlaySound('igMainMenuOptionCheckBoxOn')
-            else
-                PlaySound('igMainMenuOptionCheckBoxOff')
-            end
-        end)
-        local label = gui.label(checkbox, gui.font_size.small)
-        label:SetPoint('RIGHT', checkbox, 'LEFT', -4, 0)
-        label:SetText('Rev')
-        label:SetTextColor(aux.color.label.enabled())
-        checkbox.label = label
-        reverse_checkbox = checkbox
+        -- Reverse toggle button is already defined above (reusing reverse_checkbox)
+        -- Just need to set the search_box anchoring
     end
     do
         -- Set initial search_box anchoring (will be updated by update_real_time)
         search_box:SetPoint('LEFT', last_page_input, 'RIGHT', gui.is_blizzard() and 8 or 4, 0)
-        search_box:SetPoint('RIGHT', reverse_checkbox, 'LEFT', -30, 0)
+        search_box:SetPoint('RIGHT', reverse_checkbox, 'LEFT', -4, 0)
     end
     do
         gui.horizontal_line(frame, -40)
