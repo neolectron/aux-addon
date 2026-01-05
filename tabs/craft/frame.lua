@@ -198,8 +198,10 @@ function aux.handle.INIT_UI()
 
     recipe_listing = listing.new(frame.recipes)
     recipe_listing:SetColInfo{
-        {name='Recipe', width=.70, align='LEFT'},    -- Recipe name (with safe indicator)
-        {name='Vendor', width=.30, align='RIGHT'},   -- Vendor value
+        {name='Recipe', width=.45, align='LEFT'},    -- Recipe name (with safe indicator)
+        {name='AH Price', width=.18, align='RIGHT'}, -- Lowest seen AH price for output
+        {name='Mats Cost', width=.18, align='RIGHT'},-- Total reagent cost
+        {name='Profit', width=.19, align='RIGHT'},   -- AH profit (price - mats)
     }
     recipe_listing:SetSelection(function(data)
         return data and data.recipe_name and data.recipe_name == selected_recipe_name

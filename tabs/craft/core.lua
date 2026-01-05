@@ -26,9 +26,26 @@ scan_results = {}  -- auction records for display
 search_continuation = nil
 real_time = false
 filter_string = nil  -- current search filter for caching
+recipe_stats = nil  -- per-recipe cached summary (ah price, mats cost, profit)
+recipe_stats_by_id = nil -- keyed by output_id
 
 -- Flag to track if tab is open
 local tab_is_open = false
+
+-- Initialize recipe stats storage (realm-scoped)
+local realm_data = aux.realm_data
+if not realm_data then
+    realm_data = {}
+    aux.realm_data = realm_data
+end
+if not realm_data.craft_recipe_stats then
+    realm_data.craft_recipe_stats = {}
+end
+if not realm_data.craft_recipe_stats_by_id then
+    realm_data.craft_recipe_stats_by_id = {}
+end
+recipe_stats = realm_data.craft_recipe_stats
+recipe_stats_by_id = realm_data.craft_recipe_stats_by_id
 
 function tab.OPEN()
     frame:Show()
@@ -245,8 +262,8 @@ function get_recipe_list()
         })
     end
     
-    -- Sort by vendor value descending
-    table.sort(recipes, function(a, b) return a.vendor_value > b.vendor_value end)
+    -- Sort alphabetically for stable display
+    table.sort(recipes, function(a, b) return a.name < b.name end)
     return recipes
 end
 
@@ -256,12 +273,28 @@ function update_recipe_listing()
     
     for i, r in ipairs(recipes) do
         local name_display = r.is_safe and aux.color.green(r.name) or r.name
-        local vendor_str = money.to_string(r.vendor_value, nil, true)
+        local stats = (r.recipe.output_id and recipe_stats_by_id[r.recipe.output_id]) or recipe_stats[r.name] or {}
+        local ah_price = stats.ah_unit_price
+        local mat_cost = stats.mat_cost
+        local profit = stats.profit
+        local ah_str = ah_price and money.to_string(ah_price, nil, true) or 'unknown'
+        local mat_str = mat_cost and money.to_string(mat_cost, nil, true) or 'unknown'
+        local profit_str
+        if profit then
+            local color = profit > 0 and aux.color.green or aux.color.red
+            profit_str = color(money.to_string(profit, nil, true))
+        elseif mat_cost or ah_price then
+            profit_str = aux.color.gray('pending')
+        else
+            profit_str = 'unknown'
+        end
         
         tinsert(rows, T.map(
             'cols', T.list(
                 T.map('value', name_display),
-                T.map('value', vendor_str)
+                T.map('value', ah_str),
+                T.map('value', mat_str),
+                T.map('value', profit_str)
             ),
             'recipe_name', r.name,
             'recipe', r.recipe,
@@ -321,6 +354,31 @@ function calculate_recipe_profit(recipe)
     }
 end
 
+-- Persist lightweight per-recipe stats for list display
+local function update_recipe_stats_cache(recipe, mat_cost, ah_unit_price, profit)
+    if not recipe then return end
+    local key = recipe.name
+    local id = recipe.output_id
+    if key then
+        local stats = recipe_stats[key] or {}
+        if mat_cost then stats.mat_cost = mat_cost end
+        if ah_unit_price then stats.ah_unit_price = ah_unit_price end
+        if profit then stats.profit = profit end
+        stats.output_quantity = recipe.output_quantity or stats.output_quantity or 1
+        stats.timestamp = time()
+        recipe_stats[key] = stats
+    end
+    if id then
+        local stats = recipe_stats_by_id[id] or {}
+        if mat_cost then stats.mat_cost = mat_cost end
+        if ah_unit_price then stats.ah_unit_price = ah_unit_price end
+        if profit then stats.profit = profit end
+        stats.output_quantity = recipe.output_quantity or stats.output_quantity or 1
+        stats.timestamp = time()
+        recipe_stats_by_id[id] = stats
+    end
+end
+
 -- Update material listing after scan
 function update_material_listing()
     if not selected_recipe then return end
@@ -349,6 +407,13 @@ function update_material_listing()
         profit_label:SetText('Vendor Profit: ' .. aux.color.red('Missing materials'))
         auction_profit_label:SetText('AH Profit: -')
     end
+
+    -- Persist summary for recipe list (only when we have meaningful data)
+    local mat_cost_for_stats = eval.all_found and eval.total_cost or nil
+    local ah_price_for_stats = crafted_item_price
+    local profit_for_stats = (mat_cost_for_stats and ah_price_for_stats) and (ah_price_for_stats * (selected_recipe.output_quantity or 1) - mat_cost_for_stats) or nil
+    update_recipe_stats_cache(selected_recipe, mat_cost_for_stats, ah_price_for_stats, profit_for_stats)
+    update_recipe_listing()
 end
 
 -- Scan for materials of selected recipe
@@ -412,6 +477,15 @@ function scan_recipe_materials(recipe_name, recipe_obj)
             scan_results = {}
             for _, cached_auction in ipairs(cached_data.auctions) do
                 tinsert(scan_results, cached_auction)
+            end
+            -- Derive crafted item price from cached results
+            crafted_item_price = nil
+            for _, cached_auction in ipairs(scan_results) do
+                if cached_auction.item_id == recipe.output_id and cached_auction.unit_buyout_price and cached_auction.unit_buyout_price > 0 then
+                    if not crafted_item_price or cached_auction.unit_buyout_price < crafted_item_price then
+                        crafted_item_price = cached_auction.unit_buyout_price
+                    end
+                end
             end
             results_listing:SetDatabase(scan_results)
             aux.print('DEBUG: Loaded ' .. getn(scan_results) .. ' cached auction records')
