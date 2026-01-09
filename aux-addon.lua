@@ -1,9 +1,17 @@
+
+-- Ensure global for compatibility with aux_merchant_prices
+function AUX_GET_ACCOUNT_DATA()
+	return aux and aux.account or nil
+end
+
 module 'aux'
 
 local T = require 'T'
 local post = require 'aux.tabs.post'
 local gui = require 'aux.gui'
 local purchase_summary = require 'aux.util.purchase_summary'
+local money = require 'aux.util.money'
+local info = require 'aux.util.info'
 
 M.print = T.vararg-function(arg)
 	DEFAULT_CHAT_FRAME:AddMessage(LIGHTYELLOW_FONT_COLOR_CODE .. '<aux> ' .. join(map(arg, tostring), ' '))
@@ -55,12 +63,12 @@ end
 
 function handle.LOAD()
     _G.aux = aux or {}
-    assign(aux, {
-        account = {},
-        realm = {},
-        faction = {},
-        character = {},
-    })
+    -- Preserve existing SavedVariables data
+    aux.account = aux.account or {}
+    aux.realm = aux.realm or {}
+    aux.faction = aux.faction or {}
+    aux.character = aux.character or {}
+    
     M.account_data = assign(aux.account, {
         scale = 1,
         ignore_owner = true,
@@ -90,7 +98,16 @@ function handle.LOAD()
                 daily = false,
                 disenchant_value = false,
                 disenchant_distribution = false,
-            }
+                wowauctions = true,
+            },
+            profit_history = {
+                total_spent = 0,
+                total_vendor_value = 0,
+                total_items = 0,
+                first_purchase_time = nil,
+                last_purchase_time = nil,
+                item_stats = {},  -- Per-item profit tracking: {[item_id] = {name, count, total_profit, total_spent}}
+            },
         })
     end
     do
@@ -100,6 +117,7 @@ function handle.LOAD()
             characters = {},
             recent_searches = {},
             favorite_searches = {},
+            saved_search_state = {},
         })
     end
 end
@@ -158,19 +176,37 @@ end
 do
 	local locked
 	function M.bid_in_progress() return locked end
-	function M.place_bid(type, index, amount, on_success)
-		if locked then return end
-		local money = GetMoney()
+	function M.place_bid(type, index, amount, on_success, is_auto_buy)
+		if locked then return false, 'busy' end
+		local money_before = GetMoney()
+		if money_before < amount then return false, 'gold' end
 		PlaceAuctionBid(type, index, amount)
-		if money >= amount then
+		if money_before >= amount then
 			locked = true
 			local send_signal, signal_received = signal()
 			local name, texture, count, _, _, _, _, _, buyout_price = GetAuctionItemInfo(type, index)
+			-- Get item_id from link for vendor price lookup
+			local item_id
+			local link = GetAuctionItemLink(type, index)
+			if link then
+				item_id = info.parse_link(link)
+			end
 			thread(when, signal_received, function()
-				-- Track all (buyout) purchases after successful bid
+				-- Track ALL buyout purchases for profit tracking (both manual and auto-buy)
 				if name and amount > 0 and amount >= buyout_price then
-					purchase_summary.add_purchase(name, texture, count, amount)
+					local track_vendor_profit = false
+					if aux and aux.current_search and aux.current_search().filter_string and string.find(aux.current_search().filter_string, '/vendor%-profit') then
+						track_vendor_profit = true
+					end
+					purchase_summary.add_purchase(name, texture, count, amount, item_id, track_vendor_profit)
 					purchase_summary.update_display()
+					-- Print buyout message with price
+					local count_str = count > 1 and (count .. "x ") or ""
+					print(color.green("Bought: ") .. count_str .. name .. " for " .. money.to_string(amount, true))
+				elseif name and amount > 0 then
+					-- Print bid message with price
+					local count_str = count > 1 and (count .. "x ") or ""
+					print(color.blue("Bid placed: ") .. count_str .. name .. " for " .. money.to_string(amount, true))
 				end
 				do (on_success or pass)() end
 				locked = false
@@ -182,7 +218,9 @@ do
 					kill()
 				end
 			end)
+			return true
 		end
+		return false
 	end
 end
 
@@ -209,7 +247,9 @@ do
 end
 
 function handle.LOAD2()
-	frame:SetScale(account_data.scale)
+	if M.account_data and M.account_data.scale then
+		frame:SetScale(M.account_data.scale)
+	end
 end
 
 function AUCTION_HOUSE_SHOW()

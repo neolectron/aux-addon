@@ -7,6 +7,7 @@ local money =  require 'aux.util.money'
 local disenchant = require 'aux.core.disenchant'
 local history = require 'aux.core.history'
 local gui = require 'aux.gui'
+local craft_vendor = require 'aux.core.craft_vendor'
 
 local UNKNOWN = GRAY_FONT_COLOR_CODE .. '?' .. FONT_COLOR_CODE_CLOSE
 
@@ -70,22 +71,37 @@ function M.extend_tooltip(tooltip, link, quantity)
         end
     end
     if settings.merchant_buy then
-        local _, price, limited = info.merchant_info(item_id)
+        local price = info.get_vendor_price(item_id, quantity)
         if price then
-            tooltip:AddLine('Vendor Buy ' .. (limited and '(limited): ' or ': ') .. money.to_string2(price * quantity), aux.color.tooltip.merchant())
+            tooltip:AddLine('Vendor Buy: ' .. money.to_string2(price * quantity), aux.color.tooltip.merchant())
         end
     end
     if settings.merchant_sell then
-        local price = info.merchant_info(item_id)
-		if price == nil and ShaguTweaks and ShaguTweaks.SellValueDB[item_id] ~= nil then
-			local charges = 1
-			if info.max_item_charges(item_id) ~= nil then 
-				charges=info.max_item_charges(item_id) 
-			end
-			price = ShaguTweaks.SellValueDB[item_id] / charges
-		end
-        if price ~= 0 then
-            tooltip:AddLine('Vendor: ' .. (price and money.to_string2(price * quantity) or UNKNOWN), aux.color.tooltip.merchant())
+        local price = info.get_vendor_price(item_id, quantity)
+        if price and price ~= 0 then
+            tooltip:AddLine('Vendor: ' .. money.to_string2(price * quantity), aux.color.tooltip.merchant())
+        end
+        -- Show vendor profit potential compared to market value
+        if price and price > 0 then
+            local item_key = (item_id or 0) .. ':' .. (suffix_id or 0)
+            local market_val = history.market_value(item_key) or history.value(item_key)
+            if market_val and market_val > 0 then
+                local profit_per_item = price - market_val
+                if profit_per_item > 0 then
+                    tooltip:AddLine('Vendor Profit: +' .. money.to_string2(profit_per_item * quantity) .. '/item', 0, 1, 0) -- green
+                end
+            end
+        end
+    end
+    -- Show craft-to-vendor info if this is a crafting material
+    if craft_vendor and craft_vendor.material_to_recipes and item_id then
+        local recipe_list = craft_vendor.material_to_recipes[item_id]
+        if recipe_list and getn(recipe_list) > 0 then
+            -- Show max buy price for any profit (guaranteed vendor sale)
+            local max_price, recipe_name = craft_vendor.get_max_mat_price(item_id, 0)
+            if max_price and max_price > 0 then
+                tooltip:AddLine('Craft Max Buy: ' .. money.to_string2(max_price) .. ' → ' .. recipe_name, 1, 0.82, 0) -- Gold color
+            end
         end
     end
     local auctionable = not item_info or info.auctionable(T.temp-info.tooltip('link', item_info.itemstring), item_info.quality)
@@ -98,6 +114,15 @@ function M.extend_tooltip(tooltip, link, quantity)
         if settings.daily  then
             local market_value = history.market_value(item_key)
             tooltip:AddLine('Today: ' .. (market_value and money.to_string2(market_value * quantity) .. ' (' .. gui.percentage_historical(aux.round(market_value / value * 100)) .. ')' or UNKNOWN), aux.color.tooltip.value())
+        end
+        -- Add WoWAuctions link hint
+        if settings.wowauctions and item_id then
+            local item_name = GetItemInfo(item_id)
+            if item_name then
+                local url_name = gsub(strlower(item_name), ' ', '-')
+                url_name = gsub(url_name, "'", '')
+                tooltip:AddLine('WoWAuctions: /aux wa ' .. item_name, 0.5, 0.5, 0.5)
+            end
         end
     end
 

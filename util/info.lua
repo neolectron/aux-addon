@@ -3,6 +3,18 @@ module 'aux.util.info'
 local T = require 'T'
 local aux = require 'aux'
 
+-- Centralized vendor price lookup
+function M.get_vendor_price(item_id, charges)
+    local vendor_price = M.merchant_info and M.merchant_info(item_id) or nil
+    if not vendor_price and ShaguTweaks and ShaguTweaks.SellValueDB then
+        vendor_price = ShaguTweaks.SellValueDB[item_id]
+        if vendor_price and charges and charges > 1 then
+            vendor_price = vendor_price / charges
+        end
+    end
+    return vendor_price
+end
+
 CreateFrame('GameTooltip', 'AuxTooltip', nil, 'GameTooltipTemplate')
 AuxTooltip:SetScript('OnTooltipAddMoney', function()
 	this.money = arg1
@@ -230,6 +242,10 @@ function M.tooltip_find(pattern, tooltip)
 end
 
 function M.load_tooltip(frame, tooltip)
+    if not tooltip then
+        frame:Hide()
+        return
+    end
     frame:ClearLines()
     for _, line in ipairs(tooltip) do
         if line.right_text then

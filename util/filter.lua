@@ -7,6 +7,7 @@ local money = require 'aux.util.money'
 local filter_util = require 'aux.util.filter'
 local history = require 'aux.core.history'
 local disenchant = require 'aux.core.disenchant'
+local craft_vendor = require 'aux.core.craft_vendor'
 
 function default_filter(str)
     return {
@@ -185,18 +186,9 @@ M.filters = {
         input_type = 'money',
         validator = function(amount)
             return function(auction_record)
-                local vendor_price = info.merchant_info(auction_record.item_id)
-				if not vendor_price and ShaguTweaks then 
-				    vendor_price = ShaguTweaks.SellValueDB[auction_record.item_id]
-					if vendor_price then 
-						local charges = 1
-						if info.max_item_charges(auction_record.item_id) ~= nil then 
-							info.charges=info.max_item_charges(auction_record.item_id) 
-						end
-						vendor_price= vendor_price/ charges 
-					 end
-				end
-                return vendor_price and vendor_price * auction_record.aux_quantity - auction_record.bid_price >= amount
+                local vendor_price = info.get_vendor_price(auction_record.item_id, auction_record.aux_quantity)
+                -- Must have positive vendor price, must profit >= amount
+                return vendor_price and vendor_price > 0 and vendor_price * auction_record.aux_quantity - auction_record.bid_price >= amount
             end
         end
     },
@@ -205,18 +197,9 @@ M.filters = {
         input_type = 'money',
         validator = function(amount)
             return function(auction_record)
-                local vendor_price = info.merchant_info(auction_record.item_id)
-				if not vendor_price and ShaguTweaks then 
-				    vendor_price = ShaguTweaks.SellValueDB[auction_record.item_id]
-					if vendor_price then 
-						local charges = 1
-						if info.max_item_charges(auction_record.item_id) ~= nil then 
-							info.charges=info.max_item_charges(auction_record.item_id) 
-						end
-						vendor_price= vendor_price/ charges 
-					 end
-				end
-                return auction_record.buyout_price > 0 and vendor_price and vendor_price * auction_record.aux_quantity - auction_record.buyout_price >= amount
+                local vendor_price = info.get_vendor_price(auction_record.item_id, auction_record.aux_quantity)
+                -- Must have buyout, must have positive vendor price, must profit >= amount
+                return auction_record.buyout_price > 0 and vendor_price and vendor_price > 0 and vendor_price * auction_record.aux_quantity - auction_record.buyout_price >= amount
             end
         end
     },
@@ -244,6 +227,142 @@ M.filters = {
 		validator = function(size)
 			return function(auction_record)
 				return auction_record.aux_quantity == size
+			end
+		end
+	},
+
+	-- Filter: only show items that can be sold to vendors (have a sell price)
+	['sellable'] = {
+		input_type = '',
+		validator = function()
+			return function(auction_record)
+                local vendor_price = info.get_vendor_price(auction_record.item_id, auction_record.aux_quantity)
+                return vendor_price and vendor_price > 0
+			end
+		end
+	},
+
+	-- Filter: only show crafting materials below their max profitable price
+	-- WARNING: May cause leftover materials if used with auto-buy on multi-material recipes
+	-- Use craft-safe for worry-free auto-buying
+	-- Usage: /craft-profit (any profit) or /craft-profit/50 (50% margin)
+	['craft-profit'] = {
+		input_type = 'number',
+		validator = function(margin_pct)
+			local margin = (margin_pct or 0) / 100  -- Default: any profit
+			return function(auction_record)
+				if auction_record.buyout_price == 0 then return false end
+				local max_price = craft_vendor.get_max_mat_price(auction_record.item_id, margin)
+				if not max_price or max_price <= 0 then return false end
+				return auction_record.unit_buyout_price <= max_price
+			end
+		end
+	},
+
+	-- Filter: SAFE auto-buy - only single-material recipes (ore→bar, stone→powder)
+	-- These have NO shared materials, so you can never have leftover waste
+	-- Perfect for AFK sniping with auto-buy enabled
+	-- Usage: /craft-safe (any profit) or /craft-safe/50 (50% margin)
+	['craft-safe'] = {
+		input_type = 'number',
+		validator = function(margin_pct)
+			local margin = (margin_pct or 0) / 100
+			return function(auction_record)
+				if auction_record.buyout_price == 0 then return false end
+				-- Must be a "safe" material (only used in single-mat recipes)
+				if not craft_vendor.is_safe_material(auction_record.item_id) then return false end
+				-- Check profitability
+				local max_price = craft_vendor.get_max_mat_price(auction_record.item_id, margin)
+				if not max_price or max_price <= 0 then return false end
+				return auction_record.unit_buyout_price <= max_price
+			end
+		end
+	},
+
+	-- Filter: show any item that's a craft material with potential profit
+	['craft-material'] = {
+		input_type = '',
+		validator = function()
+			return function(auction_record)
+				return craft_vendor.material_to_recipes[auction_record.item_id] ~= nil
+			end
+		end
+	},
+
+	-- Filter: show materials for a specific recipe
+	-- Usage: /for-craft/bronze bar - shows Copper Ore (material for Bronze Bar recipe)
+	-- Combine with craft-profit: /for-craft/bronze bar/craft-profit
+	['for-craft'] = {
+		input_type = 'string',
+		validator = function(recipe_name)
+			-- Find recipe (case-insensitive)
+			local target_recipe = nil
+			local target_name = nil
+			for name, recipe in pairs(craft_vendor.get_recipes()) do
+				if strlower(name) == strlower(recipe_name) then
+					target_recipe = recipe
+					target_name = name
+					break
+				end
+			end
+			if not target_recipe then
+				return function() return false end
+			end
+			-- Build set of material item_ids for this recipe
+			local mat_ids = {}
+			for _, mat in ipairs(target_recipe.materials) do
+				mat_ids[mat.item_id] = true
+			end
+			return function(auction_record)
+				return mat_ids[auction_record.item_id] == true
+			end
+		end
+	},
+
+	-- Filter: only show materials we still NEED (ratio-aware)
+	-- Checks session tracking and skips materials we have enough of
+	['need-craft'] = {
+		input_type = 'string',
+		validator = function(recipe_name)
+			-- Find recipe
+			local target_recipe = nil
+			for name, recipe in pairs(craft_vendor.get_recipes()) do
+				if strlower(name) == strlower(recipe_name) then
+					target_recipe = recipe
+					break
+				end
+			end
+			if not target_recipe then
+				return function() return false end
+			end
+			return function(auction_record)
+				-- Check if this item is a material for the recipe
+				local mat_info = nil
+				for _, mat in ipairs(target_recipe.materials) do
+					if mat.item_id == auction_record.item_id then
+						mat_info = mat
+						break
+					end
+				end
+				if not mat_info then return false end
+				
+				-- Check ratio - do we need more of this material?
+				local session = craft_vendor.get_session()
+				local have_this = session[auction_record.item_id] and session[auction_record.item_id].quantity or 0
+				
+				-- Find the limiting material (lowest ratio of have/need)
+				local min_crafts = 999999  -- Sentinel value, will be reduced to actual min
+				for _, mat in ipairs(target_recipe.materials) do
+					local have = session[mat.item_id] and session[mat.item_id].quantity or 0
+					local crafts_possible = math.floor(have / mat.quantity)
+					if crafts_possible < min_crafts then
+						min_crafts = crafts_possible
+					end
+				end
+				
+				-- How many of THIS material do we need to match?
+				local needed_for_balance = (min_crafts + 1) * mat_info.quantity
+				return have_this < needed_for_balance
 			end
 		end
 	},

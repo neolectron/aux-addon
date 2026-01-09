@@ -512,6 +512,7 @@ do
 	    local self = CreateFrame('Frame', nil, parent)
 	    local level = parent:GetFrameLevel()
 	    self:SetFrameLevel(level + 1)
+	    self:EnableMouse(true)
 	    do
 	        local status_bar = CreateFrame('StatusBar', nil, self, 'TextStatusBar')
 	        status_bar:SetOrientation('HORIZONTAL')
@@ -524,6 +525,7 @@ do
             end
 	        status_bar:SetFrameLevel(level + 2)
 	        status_bar:SetScript('OnUpdate', update_bar)
+	        status_bar:EnableMouse(false)
 	        self.secondary_status_bar = status_bar
 	    end
 	    do
@@ -538,12 +540,14 @@ do
             end
 	        status_bar:SetFrameLevel(level + 3)
 	        status_bar:SetScript('OnUpdate', update_bar)
+	        status_bar:EnableMouse(false)
 	        self.primary_status_bar = status_bar
 	    end
 	    do
 	        local text_frame = CreateFrame('Frame', nil, self)
 	        text_frame:SetFrameLevel(level + 4)
 	        text_frame:SetAllPoints(self)
+	        text_frame:EnableMouse(false)
 	        local text = label(text_frame, font_size.medium)
 	        text:SetTextColor(aux.color.text.enabled())
 	        text:SetPoint('CENTER', 0, 0)
@@ -571,6 +575,22 @@ do
 	    function self:set_text(text)
 	        self.text:SetText(text)
 	    end
+	    function self:set_tooltip_text(text)
+	        self.tooltip_text = text
+	    end
+	    
+	    -- Add OnEnter/OnLeave for tooltip
+	    self:SetScript('OnEnter', function()
+	        if self.tooltip_text and self.tooltip_text ~= '' then
+	            GameTooltip:SetOwner(self, 'ANCHOR_TOP')
+	            GameTooltip:AddLine(self.tooltip_text, 1, 1, 1)
+	            GameTooltip:Show()
+	        end
+	    end)
+	    self:SetScript('OnLeave', function()
+	        GameTooltip:Hide()
+	    end)
+	    
 	    return self
 	end
 end

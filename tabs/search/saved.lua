@@ -11,7 +11,7 @@ end
 
 function update_search_listings()
 	local favorite_search_rows = T.acquire()
-	for i = 1, getn(favorite_searches) do
+	for i = 1, getn(favorite_searches or {}) do
 		local search = favorite_searches[i]
 		local name = strsub(search.prettified, 1, 250)
 		tinsert(favorite_search_rows, T.map(
@@ -23,7 +23,7 @@ function update_search_listings()
 	favorite_searches_listing:SetData(favorite_search_rows)
 
 	local recent_search_rows = T.acquire()
-	for i = 1, getn(recent_searches) do
+	for i = 1, getn(recent_searches or {}) do
 		local search = recent_searches[i]
 		local name = strsub(search.prettified, 1, 250)
 		tinsert(recent_search_rows, T.map(
@@ -92,6 +92,8 @@ handlers = {
 }
 
 function get_auto_buy_validator()
+	if not favorite_searches then return end
+	
 	local validators = T.acquire()
 	for _, search in favorite_searches do
 		if search.auto_buy then
@@ -109,6 +111,8 @@ function get_auto_buy_validator()
 end
 
 function get_auto_bid_validator()
+	if not favorite_searches then return end
+	
 	local validators = T.acquire()
 	for _, search in favorite_searches do
 		if search.auto_bid then
@@ -143,9 +147,11 @@ function enable_auto_buy(search)
 	if queries then
 		if getn(queries) > 1 then
 			aux.print('Error: Auto Buy does not support multi-queries')
-		elseif aux.size(queries[1].blizzard_query) > 0 and not filter_util.parse_filter_string(search.filter_string).blizzard.exact then
-			aux.print('Error: Auto Buy does not support Blizzard filters')
 		else
+			-- Allow Blizzard filters but warn the user
+			if aux.size(queries[1].blizzard_query) > 0 and not filter_util.parse_filter_string(search.filter_string).blizzard.exact then
+				aux.print(aux.color.orange('Warning: Auto Buy with Blizzard filters will only work when scanning that category'))
+			end
 			search.auto_buy = true
 		end
 	else
@@ -158,9 +164,11 @@ function enable_auto_bid(search)
 	if queries then
 		if getn(queries) > 1 then
 			aux.print('Error: Auto Bid does not support multi-queries')
-		elseif aux.size(queries[1].blizzard_query) > 0 and not filter_util.parse_filter_string(search.filter_string).blizzard.exact then
-			aux.print('Error: Auto Bid does not support Blizzard filters')
 		else
+			-- Allow Blizzard filters but warn the user
+			if aux.size(queries[1].blizzard_query) > 0 and not filter_util.parse_filter_string(search.filter_string).blizzard.exact then
+				aux.print(aux.color.orange('Warning: Auto Bid with Blizzard filters will only work when scanning that category'))
+			end
 			search.auto_bid = true
 		end
 	else

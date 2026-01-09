@@ -137,6 +137,21 @@ local methods = {
                 for j, col in row.cols do
                     if self.colInfo[j] then
                         local colData = data.cols[j]
+
+                        col.icon:Hide()
+                        col.text:ClearAllPoints()
+                        if self.colInfo[j].icon and colData.texture then
+                            col.icon:SetTexture(colData.texture)
+                            col.icon:Show()
+                            col.text:SetPoint('LEFT', col.icon, 'RIGHT', 4, 0)
+                            col.text:SetPoint('RIGHT', col, 'RIGHT', -1, 0)
+                            col.text:SetPoint('TOP', col, 'TOP', 0, -1)
+                            col.text:SetPoint('BOTTOM', col, 'BOTTOM', 0, 1)
+                        else
+                            col.text:SetPoint('TOPLEFT', col, 'TOPLEFT', 1, -1)
+                            col.text:SetPoint('BOTTOMRIGHT', col, 'BOTTOMRIGHT', -1, 1)
+                        end
+
                         if type(colData.value) == 'function' then
 	                        col.text:SetText(colData.value(unpack(colData.args)))
                         else
@@ -200,6 +215,13 @@ local methods = {
         local row = self.rows[rowNum]
         local colNum = getn(row.cols) + 1
         local cell = CreateFrame('Frame', nil, row)
+        local icon = cell:CreateTexture(nil, 'ARTWORK')
+        icon:SetPoint('LEFT', cell, 'LEFT', 1, 0)
+        icon:SetWidth(14)
+        icon:SetHeight(14)
+        icon:Hide()
+        cell.icon = icon
+
         local text = cell:CreateFontString()
         cell.text = text
         text:SetFont(gui.font, ROW_TEXT_SIZE)

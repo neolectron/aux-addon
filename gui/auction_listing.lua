@@ -73,7 +73,7 @@ end
 M.search_columns = {
     {
         title = 'Item',
-        width = .35,
+        width = .3,
         init = item_column_init,
         fill = item_column_fill,
         cmp = function(record_a, record_b, desc)
@@ -82,11 +82,11 @@ M.search_columns = {
     },
     {
         title = 'Lvl',
-        width = .035,
+        width = .04,
         align = 'CENTER',
         fill = function(cell, record)
-            local display_level = max(record.level, 1)
-            display_level = UnitLevel'player' < record.level and aux.color.red(display_level) or display_level
+            local display_level = max(record.level or 0, 1)
+            display_level = UnitLevel('player') < (record.level or 0) and aux.color.red(display_level) or display_level
             cell.text:SetText(display_level)
         end,
         cmp = function(record_a, record_b, desc)
@@ -95,7 +95,7 @@ M.search_columns = {
     },
     {
         title = 'Auctions',
-        width = .06,
+        width = .07,
         align = 'CENTER',
         fill = function(cell, record, count, own, expandable)
             local numAuctionsText = expandable and aux.color.link(count) or count
@@ -119,7 +119,7 @@ M.search_columns = {
     },
     {
         title = 'Stack\nSize',
-        width = .055,
+        width = .06,
         align = 'CENTER',
         fill = function(cell, record)
             cell.text:SetText(record.aux_quantity)
@@ -130,7 +130,7 @@ M.search_columns = {
     },
     {
         title = 'Time\nLeft',
-        width = .04,
+        width = .05,
         align = 'CENTER',
         fill = function(cell, record)
             cell.text:SetText(TIME_LEFT_STRINGS[record.duration or 0] or '?')
@@ -141,7 +141,7 @@ M.search_columns = {
     },
     {
         title = 'Seller',
-        width = .13,
+        width = .12,
         align = 'CENTER',
         fill = function(cell, record)
             cell.text:SetText(info.is_player(record.owner) and (aux.color.yellow(record.owner)) or (record.owner or '?'))
@@ -160,15 +160,15 @@ M.search_columns = {
     },
     {
         title = {'Auction Bid\n(per item)', 'Auction Bid\n(per stack)'},
-        width = .125,
+        width = .12,
         align = 'RIGHT',
         isPrice = true,
         fill = function(cell, record)
             local price_color
             if record.high_bidder then
-	            price_color = aux.color.green
+                price_color = aux.color.green
             elseif record.high_bid ~= 0 then
-	            price_color = aux.color.orange
+                price_color = aux.color.orange
             end
             local price
             if record.high_bidder then
@@ -192,23 +192,23 @@ M.search_columns = {
                 price_b = price_per_unit and record_b.unit_bid_price or record_b.bid_price
             end
             if record_a.high_bidder and not record_b.high_bidder then
-	            return sort_util.GT
+                return sort_util.GT
             elseif record_b.high_bidder and not record_a.high_bidder then
-	            return sort_util.LT
+                return sort_util.LT
             end
             if price_a == price_b then
-				if record_a.high_bid == 0 and record_b.high_bid ~= 0 then
-		            return sort_util.GT
-	            elseif record_b.high_bid == 0 and record_a.high_bid ~= 0 then
-		            return sort_util.LT
-	            end
+                if record_a.high_bid == 0 and record_b.high_bid ~= 0 then
+                    return sort_util.GT
+                elseif record_b.high_bid == 0 and record_a.high_bid ~= 0 then
+                    return sort_util.LT
+                end
             end
             return sort_util.compare(price_a, price_b, desc)
         end,
     },
     {
         title = {'Auction Buyout\n(per item)', 'Auction Buyout\n(per stack)'},
-        width = .125,
+        width = .12,
         align = 'RIGHT',
         isPrice = true,
         fill = function(cell, record)
@@ -226,7 +226,97 @@ M.search_columns = {
     },
     {
         title = '% Hist.\nValue',
+        width = .12,
+        align = 'CENTER',
+        fill = function(cell, record)
+            local pct, bidPct = record_percentage(record)
+            cell.text:SetText((pct or bidPct) and gui.percentage_historical(pct or bidPct, not pct) or '?')
+        end,
+        cmp = function(record_a, record_b, desc)
+            local pct_a = record_percentage(record_a) or (desc and -aux.huge or aux.huge)
+            local pct_b = record_percentage(record_b) or (desc and -aux.huge or aux.huge)
+            return sort_util.compare(pct_a, pct_b, desc)
+        end,
+    },
+}
+
+-- Columns used by the craft tab (no bid column, tighter right side)
+M.craft_columns = {
+    {
+        title = 'Item',
+        width = .33,
+        init = item_column_init,
+        fill = item_column_fill,
+        cmp = function(record_a, record_b, desc)
+            return sort_util.compare(record_a.name, record_b.name, desc)
+        end,
+    },
+    {
+        title = 'Auctions',
         width = .08,
+        align = 'CENTER',
+        fill = function(cell, record, count, own, expandable)
+            local numAuctionsText = expandable and aux.color.link(count) or count
+            if own > 0 then
+                numAuctionsText = numAuctionsText .. (' ' .. aux.color.yellow('(' .. own .. ')'))
+            end
+            cell.text:SetText(numAuctionsText)
+        end,
+        cmp = function(record_a, record_b, desc)
+            return sort_util.EQ
+        end,
+    },
+    {
+        title = 'Stack\nSize',
+        width = .07,
+        align = 'CENTER',
+        fill = function(cell, record)
+            cell.text:SetText(record.aux_quantity)
+        end,
+        cmp = function(record_a, record_b, desc)
+            return sort_util.compare(record_a.aux_quantity, record_b.aux_quantity, desc)
+        end,
+    },
+    {
+        title = 'Seller',
+        width = .16,
+        align = 'CENTER',
+        fill = function(cell, record)
+            cell.text:SetText(info.is_player(record.owner) and (aux.color.yellow(record.owner)) or (record.owner or '?'))
+        end,
+        cmp = function(record_a, record_b, desc)
+            if not record_a.owner and not record_b.owner then
+                return sort_util.EQ
+            elseif not record_a.owner then
+                return sort_util.GT
+            elseif not record_b.owner then
+                return sort_util.LT
+            else
+                return sort_util.compare(record_a.owner, record_b.owner, desc)
+            end
+        end,
+    },
+    {
+        title = {'Auction Buyout\n(per item)', 'Auction Buyout\n(per stack)'},
+        width = .2,
+        align = 'RIGHT',
+        isPrice = true,
+        fill = function(cell, record)
+            local price = price_per_unit and ceil(record.unit_buyout_price) or record.buyout_price
+            cell.text:SetText(price > 0 and money.to_string(price, true) or '---')
+        end,
+        cmp = function(record_a, record_b, desc)
+            local price_a = price_per_unit and record_a.unit_buyout_price or record_a.buyout_price
+            local price_b = price_per_unit and record_b.unit_buyout_price or record_b.buyout_price
+            price_a = price_a > 0 and price_a or (desc and -aux.huge or aux.huge)
+            price_b = price_b > 0 and price_b or (desc and -aux.huge or aux.huge)
+
+            return sort_util.compare(price_a, price_b, desc)
+        end,
+    },
+    {
+        title = '% Hist.\nValue',
+        width = .16,
         align = 'CENTER',
         fill = function(cell, record)
             local pct, bidPct = record_percentage(record)

@@ -101,11 +101,12 @@ function aux.handle.INIT_UI()
 
     buyout_listing = listing.new(frame.buyout_listing)
     buyout_listing:SetColInfo{
-        {name='Auctions', width=.17, align='CENTER'},
-        {name='Time\nLeft', width=.11, align='CENTER'},
-        {name='Stack\nSize', width=.12, align='CENTER'},
-        {name='Auction Buyout\n(per item)', width=.4, align='RIGHT'},
-        {name='% Hist.\nValue', width=.20, align='CENTER'},
+        {name='Auctions', width=.14, align='CENTER'},
+        {name='Time\nLeft', width=.09, align='CENTER'},
+        {name='Stack\nSize', width=.09, align='CENTER'},
+        {name='Auction Buyout\n(per item)', width=.33, align='RIGHT'},
+        {name='% Hist.\nValue', width=.15, align='CENTER'},
+        {name='Cancel\nProfit', width=.20, align='RIGHT'},
     }
     buyout_listing:SetSelection(function(data)
         return data.record == get_buyout_selection() or data.record.historical_value and get_buyout_selection() and get_buyout_selection().historical_value
@@ -342,6 +343,14 @@ function aux.handle.INIT_UI()
         local label = gui.label(frame.parameters, gui.font_size.medium)
         label:SetPoint('TOPLEFT', unit_buyout_price_input, 'BOTTOMLEFT', 0, -24)
         vendor_price_label = label
+    end
+    do
+        local label = gui.label(frame.parameters, gui.font_size.medium)
+        label:SetPoint('TOPLEFT', vendor_price_label, 'BOTTOMLEFT', 0, -4)
+        label:SetText('WARNING: Below vendor price!')
+        label:SetTextColor(1, 0.2, 0.2) -- Red
+        label:Hide()
+        below_vendor_warning = label
     end
 
     function aux.handle.LOAD()

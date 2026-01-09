@@ -138,6 +138,35 @@ function aux.handle.INIT_UI()
         start_button = btn
     end
     do
+        -- "R" toggle button for reverse scan order
+        local btn = gui.button(frame)
+        btn:SetWidth(20)
+        btn:SetHeight(25)
+        btn:SetPoint('RIGHT', start_button, 'LEFT', -4, 0)
+        btn:SetText('R')
+        btn:SetScript('OnClick', function()
+            local checked = not btn.IsChecked
+            btn.IsChecked = checked
+            if checked then
+                btn:LockHighlight()
+            else
+                btn:UnlockHighlight()
+            end
+        end)
+        btn.SetChecked = function(self, v)
+            self.IsChecked = v
+            if v then
+                self:LockHighlight()
+            else
+                self:UnlockHighlight()
+            end
+        end
+        btn.GetChecked = function(self)
+            return self.IsChecked
+        end
+        reverse_checkbox = btn
+    end
+    do
         local btn = gui.button(frame)
         btn:SetHeight(25)
         btn:SetPoint('TOPRIGHT', -5, -8)
@@ -150,7 +179,7 @@ function aux.handle.INIT_UI()
     do
         local btn = gui.button(frame)
         btn:SetHeight(25)
-        btn:SetPoint('RIGHT', start_button, 'LEFT', -4, 0)
+        btn:SetPoint('RIGHT', reverse_checkbox, 'LEFT', -4, 0)
         btn:SetBackdropColor(aux.color.state.enabled())
         btn:SetText('Resume')
         btn:SetScript('OnClick', function()
@@ -180,6 +209,15 @@ function aux.handle.INIT_UI()
         end)
         editbox.enter = execute
         search_box = editbox
+    end
+    do
+        -- Reverse toggle button is already defined above (reusing reverse_checkbox)
+        -- Just need to set the search_box anchoring
+    end
+    do
+        -- Set initial search_box anchoring (will be updated by update_real_time)
+        search_box:SetPoint('LEFT', last_page_input, 'RIGHT', gui.is_blizzard() and 8 or 4, 0)
+        search_box:SetPoint('RIGHT', reverse_checkbox, 'LEFT', -4, 0)
     end
     do
         gui.horizontal_line(frame, -40)
