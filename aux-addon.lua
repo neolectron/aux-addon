@@ -1,3 +1,9 @@
+
+-- Ensure global for compatibility with aux_merchant_prices
+function AUX_GET_ACCOUNT_DATA()
+	return aux and aux.account or nil
+end
+
 module 'aux'
 
 local T = require 'T'
