@@ -910,10 +910,8 @@ function update_recipe_listing()
         local ah_str
         if ah_price then
             ah_str = money.to_string(ah_price, nil, true)
-        elseif stats.ah_missing then
-            ah_str = aux.color.red('Missing')
         else
-            ah_str = 'unknown'
+            ah_str = '-'
         end
 
         local mat_str
@@ -936,24 +934,19 @@ function update_recipe_listing()
             if has_prices then
                 mat_str = money.to_string(missing_cost, nil, true)
             else
-                mat_str = aux.color.red('Missing')
+                mat_str = '-'
             end
         elseif mat_cost then
             mat_str = money.to_string(mat_cost, nil, true)
-        elseif stats.mats_missing then
-            mat_str = aux.color.red('Missing')
         else
-            mat_str = 'unknown'
+            mat_str = '-'
         end
         local profit_str
         if profit then
             local color = profit > 0 and aux.color.green or aux.color.red
             profit_str = color(money.to_string(profit, nil, true))
-        elseif mat_cost then
-            -- We have material costs but still missing AH price, so it's pending
-            profit_str = aux.color.gray('pending')
         else
-            profit_str = 'unknown'
+            profit_str = '-'
         end
         
         tinsert(rows, T.map(
