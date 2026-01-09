@@ -344,14 +344,6 @@ function aux.handle.INIT_UI()
         label:SetPoint('TOPLEFT', unit_buyout_price_input, 'BOTTOMLEFT', 0, -24)
         vendor_price_label = label
     end
-    do
-        local label = gui.label(frame.parameters, gui.font_size.medium)
-        label:SetPoint('TOPLEFT', vendor_price_label, 'BOTTOMLEFT', 0, -4)
-        label:SetText('WARNING: Below vendor price!')
-        label:SetTextColor(1, 0.2, 0.2) -- Red
-        label:Hide()
-        below_vendor_warning = label
-    end
 
     function aux.handle.LOAD()
         if aux.account_data.post_bid then

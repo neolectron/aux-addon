@@ -341,34 +341,19 @@ end
 function validate_parameters()
     if not selected_item then
         post_button:Disable()
-        below_vendor_warning:Hide()
         return
     end
     if get_unit_buyout_price() > 0 and get_unit_start_price() > get_unit_buyout_price() then
         post_button:Disable()
-        below_vendor_warning:Hide()
         return
     end
     if get_unit_start_price() == 0 then
         post_button:Enable()
-        below_vendor_warning:Hide()
         return
     end
     if stack_count_slider:GetValue() == 0 then
         post_button:Disable()
-        below_vendor_warning:Hide()
         return
-    end
-    
-    -- Check if selling below vendor price (accounting for 5% AH cut)
-    local unit_vendor = selected_item.unit_vendor_price
-    local unit_buyout = get_unit_buyout_price()
-    local after_fees = unit_buyout * 0.95  -- What you actually get after 5% AH fee
-    
-    if unit_vendor and unit_vendor > 0 and unit_buyout > 0 and after_fees < unit_vendor then
-        below_vendor_warning:Show()
-    else
-        below_vendor_warning:Hide()
     end
     
     post_button:Enable()
@@ -391,7 +376,6 @@ function update_item_configuration()
         duration_dropdown:Hide()
         hide_checkbox:Hide()
         vendor_price_label:Hide()
-        below_vendor_warning:Hide()
     else
 		unit_start_price_input:Show()
         unit_buyout_price_input:Show()
@@ -426,7 +410,7 @@ function update_item_configuration()
             deposit:SetText('Deposit: ' .. money.to_string(amount, nil, nil, aux.color.text.enabled))
         end
 
-        --vendor price (with AH fee consideration)
+        --vendor price
         do
             local unit_vendor_price = selected_item.unit_vendor_price
             local unit_buyout = get_unit_buyout_price()
@@ -440,7 +424,7 @@ function update_item_configuration()
                 vendor_price_label:SetText("Unit Vendor Price: None")
                 vendor_price_label:SetTextColor(aux.color.label.enabled())
             elseif is_loss then
-                vendor_price_label:SetText("Unit Vendor Price: " .. money.to_string(unit_vendor_price, nil, nil, aux.color.text.enabled) .. " (LOSS!)")
+                vendor_price_label:SetText("Unit Vendor Price: " .. money.to_string(unit_vendor_price, nil, nil, aux.color.text.enabled) .. " YOURS BELOW!")
                 vendor_price_label:SetTextColor(1, 0.2, 0.2) -- Red
             else
                 vendor_price_label:SetText("Unit Vendor Price: " .. money.to_string(unit_vendor_price, nil, nil, aux.color.text.enabled))
