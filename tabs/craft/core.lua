@@ -94,31 +94,6 @@ local function get_cached_item_price(filter_key, item_id)
     return min_price, total_available
 end
 
--- Log cache usage to help spot approaching limits
-function log_search_cache_stats(prefix)
-    if not (ensure_search_cache() and search_cache.stats) then
-        aux.print('[Craft] Search cache unavailable')
-        return
-    end
-    local stats = search_cache.stats() or {}
-    local entries = stats.entries or 0
-    local auctions = stats.total_auctions or 0
-    local limit = search_cache.get_limit and search_cache.get_limit() or 0
-    local oldest = stats.oldest_age or 0
-    local oldest_text
-    if oldest > 0 then
-        if oldest < 60 then
-            oldest_text = format('%ds', oldest)
-        elseif oldest < 3600 then
-            oldest_text = format('%dm', math.floor(oldest / 60))
-        else
-            oldest_text = format('%dh', math.floor(oldest / 3600))
-        end
-    end
-    local label = prefix or '[Craft]'
-    aux.print(format('%s Cache entries: %d / %d, auctions: %d%s', label, entries, limit, auctions, oldest_text and (', oldest ' .. oldest_text .. ' ago') or ''))
-end
-
 -- Calculate estimated scan time for uncached items only (4 seconds per page/item)
 function update_scan_all_estimate()
     local recipes = craft_vendor.get_recipes() or {}
@@ -262,15 +237,12 @@ function scan_all_materials()
 
     local filter = table.concat(filter_parts, ';')
     if filter == '' then
-        aux.print('[Craft] No recipes/materials to scan')
         return
     end
 
     search_box:SetText(filter)
     first_page_input:SetText('1')
     last_page_input:SetText('1')
-    aux.print(format('[Craft] Scanning all: %d recipes, %d outputs, %d materials (%d uncached first)', aux.size(recipes), total_outputs, total_materials, getn(uncached_items)))
-    log_search_cache_stats('[Craft] Before scan-all')
     execute_search()
 end
 
@@ -313,14 +285,12 @@ function quick_scan_recipe(recipe_name, recipe_obj)
     
     local filter = table.concat(filter_parts, ';')
     if filter == '' then
-        aux.print('[Craft] Recipe has no items to scan')
         return
     end
     
     search_box:SetText(filter)
     first_page_input:SetText('1')
     last_page_input:SetText('1')
-    aux.print(format('[Craft] Quick scan for %s', recipe_name))
     execute_search()
 end
 
@@ -719,8 +689,6 @@ function execute_search(resume)
                 invalidate_inventory_cache()
                 update_recipe_listing()
             end
-
-            log_search_cache_stats('[Craft] Cache after complete')
         end,
         on_abort = function()
             scanning = false
@@ -738,7 +706,6 @@ function execute_search(resume)
             if scan_all_targets then
                 update_recipe_listing()
             end
-            log_search_cache_stats('[Craft] Cache after stop')
         end,
     }
 end
@@ -1109,10 +1076,6 @@ function scan_recipe_materials(recipe_name, recipe_obj)
         end
     end
 
-    if cached_count > 0 then
-        aux.print(format('[Craft] Loaded %d material prices from cache for %s', cached_count, crafted_name or recipe_name or '?'))
-    end
-
     -- Load cached auction records from search_cache for instant display
     if ensure_search_cache() and search_cache.get then
         -- Build the same filter string that will be used for the search
@@ -1199,10 +1162,6 @@ function scan_recipe_materials(recipe_name, recipe_obj)
     
     -- Update search box
     search_box:SetText(filter_string)
-    
-    if getn(cached_items) > 0 then
-        aux.print(format('[Craft] Scanning %s: %d uncached, %d cached (for refresh)', recipe_name, getn(uncached_items), getn(cached_items)))
-    end
     
     -- Set page range for full recipe scan (no page limit, like normal recipe clicks)
     first_page_input:SetText('1')
@@ -1326,7 +1285,6 @@ end
 -- Buy missing materials to craft 1 item
 function buy_missing_materials()
     if not selected_recipe then
-        aux.print('[Craft] No recipe selected')
         return
     end
     
@@ -1352,11 +1310,8 @@ function buy_missing_materials()
     end
     
     if total_to_buy == 0 then
-        aux.print('[Craft] You have all materials for ' .. selected_recipe_name)
         return
     end
-    
-    aux.print(format('[Craft] Need to buy %d items for %s', total_to_buy, selected_recipe_name))
     
     -- Build search filter for missing materials
     local filter_parts = {}

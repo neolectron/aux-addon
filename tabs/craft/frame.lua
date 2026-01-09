@@ -253,7 +253,6 @@ function aux.handle.INIT_UI()
         btn:SetBackdropColor(0.7, 0.1, 0.1, 0.9)
         btn:SetText('Scan Missing Mats')
         btn:SetScript('OnClick', function()
-            log_search_cache_stats('[Craft] Cache')
             scan_all_materials()
         end)
         scan_all_button = btn
