@@ -17,10 +17,6 @@ local tab = aux.tab 'Craft'
 
 -- Forward declarations
 local update_recipe_stats_cache
-local set_missing_flags
-local clear_missing_flags
-local clear_all_missing_flags
-local refresh_missing_flags_from_cache
 
 -- Ensure the shared search cache module is available
 local function ensure_search_cache()
@@ -263,7 +259,6 @@ function scan_all_materials()
     last_page_input:SetText('1')
     aux.print(format('[Craft] Scan-all (uncached only): %d recipes, %d uncached outputs, %d uncached materials', aux.size(recipes), total_outputs, total_materials))
     log_search_cache_stats('[Craft] Before scan-all')
-    clear_all_missing_flags()
     execute_search()
 end
 
@@ -277,7 +272,6 @@ function quick_scan_recipe(recipe_name, recipe_obj)
     
     selected_recipe = recipe
     selected_recipe_name = recipe_name
-    clear_missing_flags(recipe)
     
     -- Clear old results immediately for instant visual feedback
     scan.abort(scan_id)
@@ -637,10 +631,6 @@ function execute_search(resume)
                 end
             end
 
-            if scan_all_targets then
-                refresh_missing_flags_from_cache()
-            end
-
             -- Refresh recipe list so Mats/AH/Profit reflect newly cached prices per page
             update_recipe_listing()
             -- Update material listing once per page (moved from on_auction for performance)
@@ -712,22 +702,6 @@ function execute_search(resume)
             update_material_listing()
             results_listing:SetDatabase(scan_results)
 
-            if selected_recipe then
-                local mats_missing = false
-                if selected_recipe.materials then
-                    for _, mat in ipairs(selected_recipe.materials) do
-                        if not material_prices[mat.item_id] then
-                            mats_missing = true
-                            break
-                        end
-                    end
-                end
-                local ah_missing = not crafted_item_price
-                set_missing_flags(selected_recipe, mats_missing, ah_missing)
-            elseif ran_scan_all then
-                refresh_missing_flags_from_cache()
-            end
-
             -- Refresh recipe list so AH Price / mats cost can reflect freshly cached data (e.g., after Scan All)
             if ran_scan_all then
                 invalidate_inventory_cache()
@@ -750,7 +724,6 @@ function execute_search(resume)
             update_material_listing()
             results_listing:SetDatabase(scan_results)
             if scan_all_targets then
-                refresh_missing_flags_from_cache()
                 update_recipe_listing()
             end
             log_search_cache_stats('[Craft] Cache after stop')
@@ -1052,9 +1025,7 @@ update_recipe_stats_cache = function(recipe, mat_cost, ah_unit_price, profit)
     if key then
         local stats = recipe_stats[key] or {}
         if mat_cost then stats.mat_cost = mat_cost end
-        if mat_cost then stats.mats_missing = false end
         if ah_unit_price then stats.ah_unit_price = ah_unit_price end
-        if ah_unit_price then stats.ah_missing = false end
         if profit then stats.profit = profit end
         stats.output_quantity = recipe.output_quantity or stats.output_quantity or 1
         stats.timestamp = time()
@@ -1063,74 +1034,11 @@ update_recipe_stats_cache = function(recipe, mat_cost, ah_unit_price, profit)
     if id then
         local stats = recipe_stats_by_id[id] or {}
         if mat_cost then stats.mat_cost = mat_cost end
-        if mat_cost then stats.mats_missing = false end
         if ah_unit_price then stats.ah_unit_price = ah_unit_price end
-        if ah_unit_price then stats.ah_missing = false end
         if profit then stats.profit = profit end
         stats.output_quantity = recipe.output_quantity or stats.output_quantity or 1
         stats.timestamp = time()
         recipe_stats_by_id[id] = stats
-    end
-end
-
--- Set missing flags for a recipe after a completed scan
-set_missing_flags = function(recipe, mats_missing, ah_missing)
-    if not recipe then return end
-    local key = recipe.name
-    local id = recipe.output_id
-    if key then
-        local stats = recipe_stats[key] or {}
-        if mats_missing ~= nil then stats.mats_missing = mats_missing end
-        if ah_missing ~= nil then stats.ah_missing = ah_missing end
-        recipe_stats[key] = stats
-    end
-    if id then
-        local stats = recipe_stats_by_id[id] or {}
-        if mats_missing ~= nil then stats.mats_missing = mats_missing end
-        if ah_missing ~= nil then stats.ah_missing = ah_missing end
-        recipe_stats_by_id[id] = stats
-    end
-end
-
--- Clear missing flags to revert to unknown state before a new scan
-clear_missing_flags = function(recipe)
-    if not recipe then return end
-    local key = recipe.name
-    local id = recipe.output_id
-    if key and recipe_stats[key] then
-        recipe_stats[key].mats_missing = nil
-        recipe_stats[key].ah_missing = nil
-    end
-    if id and recipe_stats_by_id[id] then
-        recipe_stats_by_id[id].mats_missing = nil
-        recipe_stats_by_id[id].ah_missing = nil
-    end
-end
-
-clear_all_missing_flags = function()
-    local recipes = craft_vendor.get_recipes() or {}
-    for _, recipe in pairs(recipes) do
-        clear_missing_flags(recipe)
-    end
-end
-
--- Recompute missing flags for all recipes based on current cache contents
-refresh_missing_flags_from_cache = function()
-    local recipes = craft_vendor.get_recipes() or {}
-    for _, recipe in pairs(recipes) do
-        local mats_missing = false
-        if recipe.materials then
-            for _, mat in ipairs(recipe.materials) do
-                local key = strlower(mat.name) .. '/exact'
-                local cached_price = get_cached_item_price(key, mat.item_id)
-                if not cached_price then
-                    mats_missing = true
-                    break
-                end
-            end
-        end
-        local ah_missing = not get_cached_output_price(recipe, recipe.name)
-        set_missing_flags(recipe, mats_missing, ah_missing)
     end
 end
 
@@ -1160,7 +1068,6 @@ function scan_recipe_materials(recipe_name, recipe_obj)
     
     selected_recipe = recipe
     selected_recipe_name = recipe_name
-    clear_missing_flags(recipe)
     
     -- Invalidate inventory cache since user might have crafted/bought items since last check
     invalidate_inventory_cache()

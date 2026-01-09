@@ -351,7 +351,7 @@ M.filters = {
 				local have_this = session[auction_record.item_id] and session[auction_record.item_id].quantity or 0
 				
 				-- Find the limiting material (lowest ratio of have/need)
-				local min_crafts = 999999
+				local min_crafts = 999999  -- Sentinel value, will be reduced to actual min
 				for _, mat in ipairs(target_recipe.materials) do
 					local have = session[mat.item_id] and session[mat.item_id].quantity or 0
 					local crafts_possible = math.floor(have / mat.quantity)

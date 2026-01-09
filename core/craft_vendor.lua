@@ -515,7 +515,7 @@ function M.get_craftable()
     for recipe_name, recipe in pairs(M.get_recipes()) do
         -- Check if we have all materials
         local can_craft = true
-        local max_crafts = 999999
+        local max_crafts = 999999  -- Sentinel value, will be reduced to actual min
         
         for _, mat in ipairs(recipe.materials) do
             local have = craft_session[mat.item_id]
@@ -648,7 +648,7 @@ function M.get_needed_quantity(item_id, target_crafts)
         local mat_qty_per_craft = entry.mat_quantity
         
         -- How many crafts can we do with current materials?
-        local min_crafts = 999999
+        local min_crafts = 999999  -- Sentinel value, will be reduced to actual min
         local have_this = 0
         
         for _, mat in ipairs(recipe.materials) do

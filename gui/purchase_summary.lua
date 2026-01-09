@@ -477,7 +477,7 @@ function M.update_display()
 		-- Calculate and display cost/price for this item
 		local cost = summary.total_cost or 0
 		local cost_string
-		if cost >= 10000 then
+		if cost >= 10000 then  -- 1 gold threshold: round to silver for cleaner display
 			local rounded_cost = aux.round(cost / 100) * 100
 			cost_string = money.to_string(rounded_cost, nil, true)
 		else
@@ -490,7 +490,7 @@ function M.update_display()
 		local item_profit = vendor_value - cost
 		if vendor_value > 0 then
 			local profit_string
-			if math.abs(item_profit) >= 10000 then
+			if math.abs(item_profit) >= 10000 then  -- 1 gold threshold: round to silver for cleaner display
 				local rounded_profit = aux.round(math.abs(item_profit) / 100) * 100
 				profit_string = money.to_string(rounded_profit, nil, true)
 			else
