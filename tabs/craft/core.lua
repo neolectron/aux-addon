@@ -585,9 +585,6 @@ function execute_search(resume)
                     end
                     material_prices[item_id].count = material_prices[item_id].count + auction_record.aux_quantity
                 end
-                
-                -- Update profit calculations as prices come in
-                update_material_listing()
             end
         end,
         on_page_scanned = function()
@@ -646,6 +643,8 @@ function execute_search(resume)
 
             -- Refresh recipe list so Mats/AH/Profit reflect newly cached prices per page
             update_recipe_listing()
+            -- Update material listing once per page (moved from on_auction for performance)
+            update_material_listing()
         end,
         on_complete = function()
             local ran_scan_all = scan_all_targets ~= nil
