@@ -66,11 +66,30 @@ function SlashCmdList.AUX(command)
     elseif arguments[1] == 'tooltip' and arguments[2] == 'wowauctions' then
 	    tooltip_settings.wowauctions = not tooltip_settings.wowauctions
         aux.print('tooltip wowauctions ' .. status(tooltip_settings.wowauctions))
-    elseif arguments[1] == 'clear' and arguments[2] == 'item' and arguments[3] == 'cache' then
-	    aux.account_data.items = {}
-        aux.account_data.item_ids = {}
-        aux.account_data.auctionable_items = {}
-        aux.print('Item cache cleared.')
+	elseif arguments[1] == 'clear' and arguments[2] == 'item' and arguments[3] == 'cache' then
+		aux.account_data.items = {}
+		aux.account_data.item_ids = {}
+		aux.account_data.auctionable_items = {}
+		aux.print('Item cache cleared.')
+	elseif arguments[1] == 'cache' and arguments[2] == 'clear' then
+		aux.account_data.items = {}
+		aux.account_data.item_ids = {}
+		aux.account_data.auctionable_items = {}
+		aux.account_data.merchant_buy = {}
+		aux.account_data.merchant_sell = {}
+		if aux.realm_data then
+			aux.realm_data.craft_recipe_stats = {}
+			aux.realm_data.craft_recipe_stats_by_id = {}
+			aux.realm_data.craft_material_prices = {}
+			aux.realm_data.craft_material_prices_global = {}
+		end
+		if aux.faction_data then
+			aux.faction_data.history = {}
+		end
+		if aux.account_data then
+			aux.account_data.purchase_summary = nil
+		end
+		aux.print('All aux caches and saved variables cleared.')
     elseif arguments[1] == 'populate' and arguments[2] == 'wdb' then
 	    info.populate_wdb()
 	elseif arguments[1] == 'sharing' then
