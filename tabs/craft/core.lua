@@ -300,6 +300,67 @@ selected_recipe_name = nil
 material_prices = {}  -- item_id -> {min_price, count}
 crafted_item_price = nil  -- lowest auction price for the crafted item
 scan_results = {}  -- auction records for display
+local function prepare_craft_refresh()
+	stage_limit_reached = false
+	if stage_records then T.release(stage_records) end
+	stage_records = T.acquire()
+	if stage_seen then T.release(stage_seen) end
+	stage_seen = T.acquire()
+	if stale_map then T.release(stale_map) end
+	stale_map = T.acquire()
+	for _, record in scan_results or T.empty do
+		record.stale = true
+		stale_map[record.search_signature] = record
+	end
+end
+
+local function drop_craft_stale_page(page)
+	if not stale_map or page == nil then return end
+	for signature, record in stale_map do
+		if record.page == page then
+			stale_map[signature] = nil
+		end
+	end
+end
+
+local function apply_craft_page_update()
+	local combined = T.acquire()
+	for _, record in stage_records or T.empty do
+		tinsert(combined, record)
+	end
+	for signature, record in stale_map or T.empty do
+		if not stage_seen[signature] then
+			tinsert(combined, record)
+		end
+	end
+	if scan_results then
+		T.release(scan_results)
+	end
+	scan_results = combined
+	results_listing:SetDatabase(scan_results)
+end
+
+local function finalize_craft_refresh()
+	if stage_records then
+		if scan_results and scan_results ~= stage_records then
+			T.release(scan_results)
+		end
+		scan_results = stage_records
+	end
+	if stale_map then
+		T.release(stale_map)
+		stale_map = nil
+	end
+	if stage_seen then
+		T.release(stage_seen)
+		stage_seen = nil
+	end
+	stage_records = nil
+end
+stage_records = nil
+stage_seen = nil
+stale_map = nil
+stage_limit_reached = false
 search_continuation = nil
 real_time = false
 filter_string = nil  -- current search filter for caching
@@ -472,6 +533,7 @@ function execute_search(resume)
     
     local current_query = 0
     local current_page = 1
+    local active_page
     local total_queries = getn(queries)
     local page_records = {}
     scan_id = scan.start{
@@ -481,6 +543,7 @@ function execute_search(resume)
         start_page = not continuation and first_page or nil,
         end_page = last_page,
         on_scan_start = function()
+            prepare_craft_refresh()
             status_bar:update_status(0, 0)
             if continuation then
                 status_bar:set_text('Resuming scan...')
@@ -499,6 +562,7 @@ function execute_search(resume)
             total_scan_pages = max(total_scan_pages or 1, 1)
             page_progress = min(page_progress or 0, total_scan_pages)
             current_page = actual_page or page_progress or 1
+            active_page = current_page
 
             -- Progress bar shows overall scan progress through all items, not per-page progress
             status_bar:update_status(q / tq, 0)
@@ -533,12 +597,17 @@ function execute_search(resume)
             end
         end,
         on_auction = function(auction_record)
-            if auction_record.buyout_price > 0 then
-                tinsert(scan_results, auction_record)
+            if auction_record.buyout_price > 0 and not stage_limit_reached then
+                auction_record.stale = false
+                tinsert(stage_records, auction_record)
                 tinsert(page_records, auction_record)
-                
+                stage_seen[auction_record.search_signature] = true
+                if getn(stage_records) >= 2000 then
+                    stage_limit_reached = true
+                    StaticPopup_Show('AUX_SEARCH_TABLE_FULL')
+                end
                 -- Update display progressively (like Search tab)
-                results_listing:SetDatabase(scan_results)
+                apply_craft_page_update()
                 
                 -- Track material prices
                 local item_id = auction_record.item_id
@@ -562,11 +631,13 @@ function execute_search(resume)
             end
         end,
         on_page_scanned = function()
+            drop_craft_stale_page(active_page)
+            apply_craft_page_update()
             if not scan_filter then return end
             local cache_ready = ensure_search_cache() and search_cache.store
             if cache_ready then
                 -- Store cumulative results so far for this filter (allows aborting mid-run and still reusing data)
-                search_cache.store(scan_filter, scan_results)
+                search_cache.store(scan_filter, stage_records)
             end
 
             -- Build per-item buckets from the current page only for efficiency
@@ -596,7 +667,7 @@ function execute_search(resume)
             end
 
             if cache_ready and next(item_keys) then
-                local source_records = getn(page_records) > 0 and page_records or scan_results
+                local source_records = getn(page_records) > 0 and page_records or stage_records
                 for _, record in ipairs(source_records) do
                     for key, target_id in pairs(item_keys) do
                         if record.item_id == target_id then
@@ -618,6 +689,9 @@ function execute_search(resume)
         end,
         on_complete = function()
             local ran_scan_all = scan_all_targets ~= nil
+            drop_craft_stale_page(active_page)
+            apply_craft_page_update()
+            finalize_craft_refresh()
             scanning = false
             search_continuation = nil
             status_bar:update_status(1, 1)
@@ -689,6 +763,9 @@ function execute_search(resume)
             end
         end,
         on_abort = function()
+            drop_craft_stale_page(active_page)
+            apply_craft_page_update()
+            finalize_craft_refresh()
             scanning = false
             -- Resume from next page of the current query
             search_continuation = { current_query or 1, (current_page or 1) + 1 }
@@ -1091,6 +1168,10 @@ function scan_recipe_materials(recipe_name, recipe_obj)
         if cached_data and cached_data.auctions and getn(cached_data.auctions) > 0 then
             scan_results = {}
             for _, cached_auction in ipairs(cached_data.auctions) do
+                cached_auction.stale = true
+                if cached_auction.blizzard_query then
+                    cached_auction.blizzard_query = aux.copy(cached_auction.blizzard_query)
+                end
                 tinsert(scan_results, cached_auction)
             end
             -- Derive crafted item price from cached results

@@ -11,6 +11,64 @@ local gui = require 'aux.gui'
 
 search_scan_id = 0
 
+local function prepare_refresh_state(search)
+	search.stage_limit_reached = false
+	if search.stage_records then T.release(search.stage_records) end
+	search.stage_records = T.acquire()
+	if search.stage_seen then T.release(search.stage_seen) end
+	search.stage_seen = T.acquire()
+	if search.stale_map then T.release(search.stale_map) end
+	search.stale_map = T.acquire()
+	for _, record in search.records or T.empty do
+		record.stale = true
+		search.stale_map[record.search_signature] = record
+	end
+end
+
+local function drop_stale_page(search, page)
+	if not search or not search.stale_map or page == nil then return end
+	for signature, stale_record in search.stale_map do
+		if stale_record.page == page then
+			search.stale_map[signature] = nil
+		end
+	end
+end
+
+local function apply_page_update(search)
+	local combined = T.acquire()
+	for _, record in search.stage_records or T.empty do
+		tinsert(combined, record)
+	end
+	for signature, stale_record in search.stale_map or T.empty do
+		if not search.stage_seen[signature] then
+			tinsert(combined, stale_record)
+		end
+	end
+	if search.records then
+		T.release(search.records)
+	end
+	search.records = combined
+	search.table:SetDatabase(search.records)
+end
+
+local function finalize_refresh_state(search)
+	if search.stage_records then
+		if search.records and search.records ~= search.stage_records then
+			T.release(search.records)
+		end
+		search.records = search.stage_records
+	end
+	if search.stale_map then
+		T.release(search.stale_map)
+		search.stale_map = nil
+	end
+	if search.stage_seen then
+		T.release(search.stage_seen)
+		search.stage_seen = nil
+	end
+	search.stage_records = nil
+end
+
 function aux.handle.LOAD()
 	-- Search state will be initialized when the tab is first opened
 	-- This ensures UI elements (status_bars, tables) are ready
@@ -254,6 +312,7 @@ end
 function start_real_time_scan(query, search, continuation)
 
 	local ignore_page
+	local active_page
 	if not search then
 		search = current_search()
 		query.blizzard_query.first_page = tonumber(continuation) or 0
@@ -261,8 +320,10 @@ function start_real_time_scan(query, search, continuation)
 		ignore_page = not tonumber(continuation)
 	end
 
+	active_page = query.blizzard_query.first_page
+	prepare_refresh_state(search)
+
 	local next_page
-	local new_records = T.acquire()
 	search_scan_id = scan.start{
 		type = 'list',
 		queries = {query},
@@ -277,35 +338,32 @@ function start_real_time_scan(query, search, continuation)
 			if last_page == 0 then
 				ignore_page = false
 			end
+			active_page = query.blizzard_query.first_page
 		end,
 		on_auction = function(auction_record)
-			if not ignore_page then
-				tinsert(new_records, auction_record)
+			if not ignore_page and not search.stage_limit_reached and getn(search.stage_records) < 2000 then
+				auction_record.stale = false
+				tinsert(search.stage_records, auction_record)
+				search.stage_seen[auction_record.search_signature] = true
+				if getn(search.stage_records) == 2000 then
+					search.stage_limit_reached = true
+					StaticPopup_Show('AUX_SEARCH_TABLE_FULL')
+				end
 			end
 		end,
 		on_complete = function()
-			local map = T.temp-T.acquire()
-			for _, record in search.records do
-				map[record.sniping_signature] = record
-			end
-			for _, record in new_records do
-				map[record.sniping_signature] = record
-			end
-			T.release(new_records)
-			new_records = aux.values(map)
-
-			if getn(new_records) > 2000 then
-				StaticPopup_Show('AUX_SEARCH_TABLE_FULL')
-			else
-				search.records = new_records
-				search.table:SetDatabase(search.records)
-			end
+			drop_stale_page(search, active_page)
+			apply_page_update(search)
+			finalize_refresh_state(search)
+			search.table:SetDatabase(search.records)
 
 			query.blizzard_query.first_page = next_page
 			query.blizzard_query.last_page = next_page
 			start_real_time_scan(query, search)
 		end,
 		on_abort = function()
+			drop_stale_page(search, active_page)
+			apply_page_update(search)
 			search.status_bar:update_status(1, 1)
 			search.status_bar:set_text('Scan paused')
 
@@ -323,11 +381,12 @@ function start_real_time_scan(query, search, continuation)
 end
 
 function start_search(queries, continuation, reverse)
-	local current_query, current_page, total_queries, start_query, start_page
+	local current_query, current_page, total_queries, start_query, start_page, active_page
 
 	local search = current_search()
 
 	total_queries = getn(queries)
+	prepare_refresh_state(search)
 
 	if continuation then
 		start_query, start_page = unpack(continuation)
@@ -362,9 +421,10 @@ function start_search(queries, continuation, reverse)
 			total_scan_pages = total_scan_pages + (start_page - 1)
 			total_scan_pages = max(total_scan_pages, 1)
 			current_page = min(current_page, total_scan_pages)
+			active_page = actual_page or current_page
 			search.status_bar:update_status((current_query - 1) / getn(queries), current_page / total_scan_pages)
 			-- Use actual_page for display (shows real AH page number)
-			local display_page = actual_page or current_page
+			local display_page = active_page
 			local display_total = (last_page or 0) + 1
 			-- Hide query progress if only 1 query
 			if total_queries == 1 then
@@ -374,11 +434,12 @@ function start_search(queries, continuation, reverse)
 			end
 		end,
 		on_page_scanned = function()
-			search.table:SetDatabase()
-			-- Progressive caching: update cache after each page
-			if search.filter_string and getn(search.records) > 0 then
+			drop_stale_page(search, active_page)
+			apply_page_update(search)
+			-- Progressive caching: update cache after each page with fresh data only
+			if search.filter_string and getn(search.stage_records) > 0 then
 				if search_cache and search_cache.store then
-					search_cache.store(search.filter_string, search.records)
+					search_cache.store(search.filter_string, search.stage_records)
 				end
 			end
 		end,
@@ -387,14 +448,21 @@ function start_search(queries, continuation, reverse)
 			current_page = current_page and 0 or start_page - 1
 		end,
 		on_auction = function(auction_record, ctrl)
-			if getn(search.records) < 2000 then
-				tinsert(search.records, auction_record)
-				if getn(search.records) == 2000 then
+			if not search.stage_limit_reached and getn(search.stage_records) < 2000 then
+				auction_record.stale = false
+				tinsert(search.stage_records, auction_record)
+				search.stage_seen[auction_record.search_signature] = true
+				if getn(search.stage_records) == 2000 then
+					search.stage_limit_reached = true
 					StaticPopup_Show('AUX_SEARCH_TABLE_FULL')
 				end
 			end
 		end,
 		on_complete = function()
+			drop_stale_page(search, active_page)
+			apply_page_update(search)
+			finalize_refresh_state(search)
+			search.table:SetDatabase(search.records)
 			search.status_bar:update_status(1, 1)
 			search.status_bar:set_text('Scan complete')
 
@@ -419,9 +487,12 @@ function start_search(queries, continuation, reverse)
 			save_search_state()
 		end,
 		on_abort = function()
+			apply_page_update(search)
 			search.status_bar:update_status(1, 1)
 			search.status_bar:set_text('Scan paused')
 
+			drop_stale_page(search, active_page)
+			apply_page_update(search)
 			if current_query then
 				search.continuation = {current_query, current_page + 1}
 			else
@@ -477,6 +548,9 @@ function M.execute(resume, real_time)
 			new_recent_search(filter_string, aux.join(aux.map(aux.copy(queries), function(filter) return filter.prettified end), ';'))
 		else
 			local search = current_search()
+			if search.records then
+				T.release(search.records)
+			end
 			search.records = T.acquire()
 			search.table:Reset()
 			search.table:SetDatabase(search.records)
@@ -507,6 +581,7 @@ function M.execute(resume, real_time)
 				if cached_auction.blizzard_query then
 					cached_auction.blizzard_query = aux.copy(cached_auction.blizzard_query)
 				end
+				cached_auction.stale = true
 				tinsert(search.records, cached_auction)
 			end
 			search.table:SetDatabase(search.records)

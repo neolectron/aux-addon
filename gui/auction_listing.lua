@@ -887,6 +887,8 @@ local methods = {
         row.indented = indented
         row.expandKey = expandKey
 
+        row:SetAlpha(record.stale and .55 or 1)
+
         for i, column in self.columns do
 	        column.fill(row.cells[i], record, totalAuctions, totalPlayerAuctions, expandable, indented)
         end
