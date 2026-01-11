@@ -118,63 +118,55 @@ end
 -- @param filter_string: The search query used
 -- @param records: Array of auction records
 local function store(filter_string, records)
-    local aux = get_aux()
-    local cache = ensure_cache()
-    if not cache then return end
-    if not records or getn(records) == 0 then return end
-    
-    local key = normalize_key(filter_string)
-    if key == '' then return end  -- Don't cache empty searches
-    
-    -- Serialize minimal auction data (not full records - too large)
-    local cached_auctions = {}
-    for i, record in ipairs(records) do
-        -- Store essential fields for display, sorting, and tooltips
-        tinsert(cached_auctions, {
-            -- Core identifiers
-            item_key = record.item_key,
-            search_signature = record.search_signature,
-            item_id = record.item_id,
-            suffix_id = record.suffix_id,
-            enchant_id = record.enchant_id,
-            unique_id = record.unique_id,
-            
-            -- Display fields
-            link = record.link,
-            itemstring = record.itemstring,
-            name = record.name,
-            texture = record.texture,
-            quality = record.quality,
-            level = record.level,
-            
-            -- Quantity and pricing
-            aux_quantity = record.aux_quantity,
-            count = record.count,
-            buyout_price = record.buyout_price,
-            unit_buyout_price = record.unit_buyout_price,
-            bid_price = record.bid_price,
-            unit_bid_price = record.unit_bid_price,
-            start_price = record.start_price,
-            high_bid = record.high_bid,
-            high_bidder = record.high_bidder,
-            
-            -- Metadata
-            owner = record.owner,
-            duration = record.duration,
-        })
-        -- Limit stored auctions per search
-        if i >= 500 then break end
-    end
-    
-    -- Store with timestamp
-    cache[key] = {
-        timestamp = time(),
-        count = getn(records),
-        auctions = cached_auctions,
-    }
-    
-    -- Prune old entries if cache is too large
-    prune()
+	local aux = get_aux()
+	local cache = ensure_cache()
+	if not cache then return end
+	if not records or getn(records) == 0 then return end
+	
+	local key = normalize_key(filter_string)
+	if key == '' then return end
+	
+	local cached_auctions = {}
+	for i, record in ipairs(records) do
+		local blizzard_query_copy = record.blizzard_query and aux.copy(record.blizzard_query) or nil
+		tinsert(cached_auctions, {
+			item_key = record.item_key,
+			search_signature = record.search_signature,
+			item_id = record.item_id,
+			suffix_id = record.suffix_id,
+			enchant_id = record.enchant_id,
+			unique_id = record.unique_id,
+			link = record.link,
+			itemstring = record.itemstring,
+			name = record.name,
+			texture = record.texture,
+			quality = record.quality,
+			level = record.level,
+			aux_quantity = record.aux_quantity,
+			count = record.count,
+			buyout_price = record.buyout_price,
+			unit_buyout_price = record.unit_buyout_price,
+			bid_price = record.bid_price,
+			unit_bid_price = record.unit_bid_price,
+			start_price = record.start_price,
+			high_bid = record.high_bid,
+			high_bidder = record.high_bidder,
+			owner = record.owner,
+			duration = record.duration,
+			query_type = record.query_type,
+			blizzard_query = blizzard_query_copy,
+			page = record.page,
+		})
+		if i >= 500 then break end
+	end
+	
+	cache[key] = {
+		timestamp = time(),
+		count = getn(records),
+		auctions = cached_auctions,
+	}
+	
+	prune()
 end
 
 local function is_stale(filter_string, ttl)

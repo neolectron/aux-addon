@@ -502,8 +502,11 @@ function M.execute(resume, real_time)
 		local cached, age = search_cache.get(filter_string)
 		if cached and cached.auctions and getn(cached.auctions) > 0 then
 			local search = current_search()
-			-- Populate with cached data immediately
 			for _, cached_auction in ipairs(cached.auctions) do
+				cached_auction.query_type = cached_auction.query_type or 'list'
+				if cached_auction.blizzard_query then
+					cached_auction.blizzard_query = aux.copy(cached_auction.blizzard_query)
+				end
 				tinsert(search.records, cached_auction)
 			end
 			search.table:SetDatabase(search.records)

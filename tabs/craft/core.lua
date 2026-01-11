@@ -96,155 +96,153 @@ end
 
 -- Calculate estimated scan time for uncached items only (4 seconds per page/item)
 function update_scan_all_estimate()
-    local recipes = craft_vendor.get_recipes() or {}
-    local scanned_mats = {}
-    local total_items = 0
-    
-    -- Count unique uncached items only (outputs + materials)
-    for recipe_name, recipe in pairs(recipes) do
-        if recipe then
-            -- Count output if uncached
-            local crafted_name = crafted_search_name(recipe, recipe_name)
-            if crafted_name and crafted_name ~= '' and recipe.output_id then
-                local key = crafted_name .. '/exact'
-                local cached_price = get_cached_item_price(key, recipe.output_id)
-                if not cached_price then
-                    total_items = total_items + 1
-                end
-            end
-            
-            -- Count unique uncached materials
-            if recipe.materials then
-                for _, mat in ipairs(recipe.materials) do
-                    local mname = strlower(mat.name)
-                    local key = mname .. '/exact'
-                    if mname ~= '' and not scanned_mats[key] then
-                        scanned_mats[key] = true
-                        local cached_price = get_cached_item_price(key, mat.item_id)
-                        if not cached_price then
-                            total_items = total_items + 1
-                        end
-                    end
-                end
-            end
-        end
-    end
-    
-    -- Each item takes 4 seconds per page, scan-all uses 1 page per item
-    -- Time estimate only counts uncached items (cached ones are instant)
-    local estimated_seconds = total_items * 4
-    local text = total_items == 0 and 'Scan Missing Mats (all cached)' or format('Scan Missing Mats (%ds)', estimated_seconds)
-    
-    if scan_all_button then
-        scan_all_button:SetText(text)
-    end
+	local recipes = get_recipe_list()
+	local scanned_mats = {}
+	local total_items = 0
+	
+	-- Count unique uncached items only (outputs + materials)
+	for _, entry in ipairs(recipes) do
+		local recipe = entry.recipe
+		local recipe_name = entry.name
+		if recipe then
+			-- Count output if uncached
+			local crafted_name = crafted_search_name(recipe, recipe_name)
+			if crafted_name and crafted_name ~= '' and recipe.output_id then
+				local key = crafted_name .. '/exact'
+				local cached_price = get_cached_item_price(key, recipe.output_id)
+				if not cached_price then
+					total_items = total_items + 1
+				end
+			end
+			
+			-- Count unique uncached materials
+			if recipe.materials then
+				for _, mat in ipairs(recipe.materials) do
+					local mname = strlower(mat.name)
+					local key = mname .. '/exact'
+					if mname ~= '' and not scanned_mats[key] then
+						scanned_mats[key] = true
+						local cached_price = get_cached_item_price(key, mat.item_id)
+						if not cached_price then
+							total_items = total_items + 1
+						end
+					end
+				end
+			end
+		end
+	end
+	
+	-- Each item takes 4 seconds per page, scan-all uses 1 page per item
+	-- Time estimate only counts uncached items (cached ones are instant)
+	local estimated_seconds = total_items * 4
+	local text = total_items == 0 and 'Scan Missing Mats (all cached)' or format('Scan Missing Mats (%ds)', estimated_seconds)
+	
+	if scan_all_button then
+		scan_all_button:SetText(text)
+	end
 end
+
 
 -- Build and run a scan that includes all unique mats and outputs for this profession
 -- Prioritizes uncached items first, then cached items
 function scan_all_materials()
-    local recipes = craft_vendor.get_recipes() or {}
-    scan_all_targets = {}
-    local recipe_names = {}
-    local scanned_mats = {}
-    
-    -- Collect sorted recipe names for consistent ordering
-    for name, _ in pairs(recipes) do
-        tinsert(recipe_names, name)
-    end
-    table.sort(recipe_names)
-    
-    -- Separate items into uncached and cached lists
-    local uncached_items = {}  -- {key, item_id}
-    local cached_items = {}    -- {key, item_id}
-    
-    -- Build output set for categorization
-    local output_set = {}
-    for _, recipe_name in ipairs(recipe_names) do
-        local recipe = recipes[recipe_name]
-        if recipe and recipe.output_id then
-            local crafted_name = crafted_search_name(recipe, recipe_name)
-            if crafted_name and crafted_name ~= '' then
-                output_set[crafted_name .. '/exact'] = true
-            end
-        end
-    end
-    
-    -- Collect all unique items and categorize by cache status
-    for _, recipe_name in ipairs(recipe_names) do
-        local recipe = recipes[recipe_name]
-        if recipe then
-            -- Add output for this recipe
-            local crafted_name = crafted_search_name(recipe, recipe_name)
-            if crafted_name and crafted_name ~= '' and recipe.output_id then
-                local key = crafted_name .. '/exact'
-                if not scanned_mats[key] then
-                    scanned_mats[key] = true
-                    local cached_price = get_cached_item_price(key, recipe.output_id)
-                    if cached_price then
-                        tinsert(cached_items, {key, recipe.output_id})
-                    else
-                        tinsert(uncached_items, {key, recipe.output_id})
-                    end
-                end
-            end
-            
-            -- Add materials for this recipe
-            if recipe.materials then
-                for _, mat in ipairs(recipe.materials) do
-                    local mname = strlower(mat.name)
-                    local key = mname .. '/exact'
-                    if mname ~= '' and not scanned_mats[key] then
-                        scanned_mats[key] = true
-                        local cached_price = get_cached_item_price(key, mat.item_id)
-                        if cached_price then
-                            tinsert(cached_items, {key, mat.item_id})
-                        else
-                            tinsert(uncached_items, {key, mat.item_id})
-                        end
-                    end
-                end
-            end
-        end
-    end
-    
-    -- Build filter: uncached items first, then cached items
-    local filter_parts = {}
-    local total_outputs = 0
-    local total_materials = 0
-    
-    -- Add uncached items first
-    for _, item_data in ipairs(uncached_items) do
-        tinsert(filter_parts, item_data[1])
-        scan_all_targets[item_data[1]] = item_data[2]
-        if output_set[item_data[1]] then
-            total_outputs = total_outputs + 1
-        else
-            total_materials = total_materials + 1
-        end
-    end
-    
-    -- Add cached items after
-    for _, item_data in ipairs(cached_items) do
-        tinsert(filter_parts, item_data[1])
-        scan_all_targets[item_data[1]] = item_data[2]
-        if output_set[item_data[1]] then
-            total_outputs = total_outputs + 1
-        else
-            total_materials = total_materials + 1
-        end
-    end
+	local recipes = get_recipe_list()
+	scan_all_targets = {}
+	local scanned_mats = {}
+	
+	-- Separate items into uncached and cached lists
+	local uncached_items = {}  -- {key, item_id}
+	local cached_items = {}    -- {key, item_id}
+	
+	-- Build output set for categorization
+	local output_set = {}
+	for _, entry in ipairs(recipes) do
+		local recipe = entry.recipe
+		if recipe and recipe.output_id then
+			local crafted_name = crafted_search_name(recipe, entry.name)
+			if crafted_name and crafted_name ~= '' then
+				output_set[crafted_name .. '/exact'] = true
+			end
+		end
+	end
+	
+	-- Collect all unique items and categorize by cache status
+	for _, entry in ipairs(recipes) do
+		local recipe = entry.recipe
+		local recipe_name = entry.name
+		if recipe then
+			-- Add output for this recipe
+			local crafted_name = crafted_search_name(recipe, recipe_name)
+			if crafted_name and crafted_name ~= '' and recipe.output_id then
+				local key = crafted_name .. '/exact'
+				if not scanned_mats[key] then
+					scanned_mats[key] = true
+					local cached_price = get_cached_item_price(key, recipe.output_id)
+					if cached_price then
+						tinsert(cached_items, {key, recipe.output_id})
+					else
+						tinsert(uncached_items, {key, recipe.output_id})
+					end
+				end
+			end
+			
+			-- Add materials for this recipe
+			if recipe.materials then
+				for _, mat in ipairs(recipe.materials) do
+					local mname = strlower(mat.name)
+					local key = mname .. '/exact'
+					if mname ~= '' and not scanned_mats[key] then
+						scanned_mats[key] = true
+						local cached_price = get_cached_item_price(key, mat.item_id)
+						if cached_price then
+							tinsert(cached_items, {key, mat.item_id})
+						else
+							tinsert(uncached_items, {key, mat.item_id})
+						end
+					end
+				end
+			end
+		end
+	end
+	
+	-- Build filter: uncached items first, then cached items
+	local filter_parts = {}
+	local total_outputs = 0
+	local total_materials = 0
+	
+	-- Add uncached items first
+	for _, item_data in ipairs(uncached_items) do
+		tinsert(filter_parts, item_data[1])
+		scan_all_targets[item_data[1]] = item_data[2]
+		if output_set[item_data[1]] then
+			total_outputs = total_outputs + 1
+		else
+			total_materials = total_materials + 1
+		end
+	end
+	
+	-- Add cached items after
+	for _, item_data in ipairs(cached_items) do
+		tinsert(filter_parts, item_data[1])
+		scan_all_targets[item_data[1]] = item_data[2]
+		if output_set[item_data[1]] then
+			total_outputs = total_outputs + 1
+		else
+			total_materials = total_materials + 1
+		end
+	end
 
-    local filter = table.concat(filter_parts, ';')
-    if filter == '' then
-        return
-    end
+	local filter = table.concat(filter_parts, ';')
+	if filter == '' then
+		return
+	end
 
-    search_box:SetText(filter)
-    first_page_input:SetText('1')
-    last_page_input:SetText('1')
-    execute_search()
+	search_box:SetText(filter)
+	first_page_input:SetText('1')
+	last_page_input:SetText('1')
+	execute_search()
 end
+
 
 function quick_scan_recipe(recipe_name, recipe_obj)
     -- Quick scan for a single recipe: scan only 1 page of each material + output

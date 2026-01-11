@@ -14,15 +14,25 @@ end
 
 do
 	local scan_states = {}
+	local missing_type_warned = false
 
 	function M.start(params)
-		local old_state = scan_states[params.type]
+		if not params then return end
+		local scan_type = params.type or 'list'
+		if not params.type then
+			if not missing_type_warned then
+				aux.print('Warning: scan started without type, defaulting to list')
+				missing_type_warned = true
+			end
+			params.type = scan_type
+		end
+		local old_state = scan_states[scan_type]
 		if old_state then
 			abort(old_state.id)
 		end
 		do (params.on_scan_start or pass)() end
 		local thread_id = aux.thread(scan)
-		scan_states[params.type] = {
+		scan_states[scan_type] = {
 			id = thread_id,
 			params = params,
 		}
